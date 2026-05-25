@@ -26,24 +26,7 @@ The iOS app does **not** depend on the Gradle/Kotlin output directly. Instead:
 
 ## One-time bootstrap
 
-### 1. Generate the Gradle wrapper
-
-The wrapper JAR isn't committed yet. Pick one:
-
-```sh
-# Easiest — uses Android Studio's bundled Gradle
-open -a "Android Studio" .
-# Then File ▸ Sync Project with Gradle Files; AS will create gradlew + the wrapper JAR.
-```
-
-or from the command line:
-
-```sh
-brew install gradle
-gradle wrapper --gradle-version 8.10.2 --distribution-type bin
-```
-
-### 2. Build the iOS XCFramework
+### 1. Build the iOS XCFramework
 
 ```sh
 ./gradlew :composeApp:assembleSharedReleaseXCFramework
@@ -54,7 +37,10 @@ gradle wrapper --gradle-version 8.10.2 --distribution-type bin
 This produces `composeApp/build/XCFrameworks/release/Shared.xcframework` (or `debug/`).
 If you use the debug variant, edit `Package.swift` to point at `debug/` instead.
 
-### 3. Create the iOS Xcode project
+The Gradle wrapper is checked in, so the first run will download Gradle 8.10.2
+automatically — no system-wide `gradle` install needed.
+
+### 2. Create the iOS Xcode project
 
 The Swift sources live at `iosApp/iosApp/`, but the `.xcodeproj` isn't generated yet.
 
@@ -65,7 +51,7 @@ In Xcode:
 3. **File ▸ Add Package Dependencies… ▸ Add Local…** — select the repo root (`/Users/brian/Dev/kmp-spm`). Add the `Shared` product to the `iosApp` target.
 4. Build & run on a simulator.
 
-> If the `Shared` import fails to resolve, make sure step 2 (`assembleShared…XCFramework`) ran first — SPM resolves the binary target by reading the file on disk.
+> If the `Shared` import fails to resolve, make sure step 1 (`assembleShared…XCFramework`) ran first — SPM resolves the binary target by reading the file on disk.
 
 ## Running each platform
 
