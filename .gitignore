@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.swiftpm/
+iosApp/iosApp.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Kotlin / Native
+.kotlin/
+kotlin-js-store/
+
+# macOS
+.DS_Store
+
+# Node (Wasm dev server)
+node_modules/
