@@ -147,11 +147,66 @@ Or open the project in Android Studio and run the `androidApp` configuration.
 
 ### Web (Wasm)
 
+**Development:** start a dev server with live reload:
+
 ```sh
 ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
 ```
 
-Then open the URL it prints.
+Then open http://localhost:8080 (the build prints the URL). In Android Studio,
+use the `composeApp [wasmJs]` run configuration.
+
+The build prints a long webpack summary. That's normal: it lists the bundled
+files. The development build is unoptimized, so the files are large (about
+19 MB for `composeApp.wasm`).
+
+If a run reports failure right after a successful build, an earlier dev server
+is probably still holding port 8080. Stop all `wasmJs` runs (or
+`./gradlew --stop`) and start one fresh run. If the page looks stale, reload
+with **⇧⌘R**.
+
+**Production:** build an optimized bundle:
+
+```sh
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+The output goes to `composeApp/build/dist/wasmJs/productionExecutable/`:
+
+| File | What it is | Size |
+| --- | --- | --- |
+| `index.html` | Page that loads the app | small |
+| `composeApp.js` | Minified loader that starts the Wasm | ~0.5 MB |
+| `<hash>.wasm` (from `composeApp.wasm`) | Your Kotlin code + Compose, optimized | ~2 MB |
+| `<hash>.wasm` (from `skiko.wasm`) | Skia graphics engine used by Compose | ~8 MB |
+
+The hashed file names change whenever the code changes, so browsers never use
+a stale cached copy.
+
+Webpack warns that these files exceed its "recommended size limit" (244 KB).
+That limit is a rule of thumb for JavaScript and every Compose for Web app
+exceeds it, so the warnings are safe to ignore.
+
+**Deploying:** upload the whole `productionExecutable/` folder to any static
+host (GitHub Pages, Netlify, Cloudflare Pages, S3, nginx, and so on). Two
+requirements:
+
+- Serve `.wasm` files with the `Content-Type: application/wasm` header.
+  Browsers refuse to compile Wasm served with any other type.
+- Turn on gzip or brotli compression. `.wasm` files compress very well, which
+  cuts the download size substantially.
+
+To check the production build locally before deploying, serve the folder with
+any static server, for example:
+
+```sh
+python3 -m http.server 8000 -d composeApp/build/dist/wasmJs/productionExecutable
+```
+
+Then open http://localhost:8000. If the page stays blank, open the browser's
+DevTools Network tab and check that the `.wasm` responses have type
+`application/wasm`. The app also needs a browser with WebAssembly GC support:
+current Chrome, Edge, Firefox, or Safari 18.2+.
 
 ### iOS
 
