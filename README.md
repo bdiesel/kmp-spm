@@ -23,7 +23,7 @@ flowchart TB
         Plat["expect fun platform()"]
     end
 
-    subgraph android["Android · androidMain"]
+    subgraph android["Android · :androidApp"]
         MA["MainActivity<br/>setContent { App() }"] --> APK["APK"]
     end
 
@@ -82,21 +82,27 @@ sequenceDiagram
 
 ```
 .
-├── composeApp/                       # The single KMP module
+├── composeApp/                       # Shared KMP module (Android library, iOS framework, Wasm app)
 │   └── src/
 │       ├── commonMain/               # Shared Compose UI (App.kt) + expect fun platform()
-│       ├── androidMain/              # MainActivity, AndroidManifest, actual platform()
+│       ├── androidMain/              # actual platform() for Android
 │       ├── iosMain/                  # MainViewController() bridge + actual platform()
 │       └── wasmJsMain/               # Browser entry point (Main.kt) + index.html
-├── iosApp/iosApp/                    # SwiftUI shell that hosts the Compose view
+├── androidApp/                       # Android application: MainActivity + AndroidManifest
+├── iosApp/
+│   ├── iosApp/                       # SwiftUI shell that hosts the Compose view + Info.plist
+│   └── iosApp.xcodeproj              # Xcode project with the iosApp scheme
 ├── Package.swift                     # Local SPM package wrapping the XCFramework
 └── gradle/libs.versions.toml         # Every dependency and plugin version
 ```
 
 - **Shared UI:** `App()` in `commonMain` is the whole UI. Each platform only
   provides an entry point and an `actual fun platform()`.
-- **Android:** `composeApp` is also the Android application module.
-  `MainActivity` calls `setContent { App() }`.
+- **Android:** `composeApp` is an Android library
+  (`com.android.kotlin.multiplatform.library`). The separate `:androidApp`
+  module is the Android application: it depends on `:composeApp`, and its
+  `MainActivity` calls `setContent { App() }`. This two-module layout is what
+  AGP 9 requires for Kotlin Multiplatform projects.
 - **Web:** the `wasmJs` target compiles `App()` to WebAssembly and serves it from
   `index.html`.
 - **iOS through SPM:** the app links the Kotlin code as a prebuilt binary package:
@@ -134,10 +140,10 @@ Gradle or a specific JDK: the wrapper and the daemon toolchain settings
 ### Android
 
 ```sh
-./gradlew :composeApp:installDebug
+./gradlew :androidApp:installDebug
 ```
 
-Or open the project in Android Studio and run the `composeApp` configuration.
+Or open the project in Android Studio and run the `androidApp` configuration.
 
 ### Web (Wasm)
 
@@ -184,14 +190,10 @@ to `release` in `Package.swift`. The scheme pre-action always builds debug.
 
 ## Known limitations
 
-- **AGP 9 compatibility flags.** `composeApp` applies both
-  `com.android.application` and `kotlin.multiplatform`, which AGP 9 no longer
-  supports by default. `gradle.properties` sets `android.builtInKotlin=false` and
-  `android.newDsl=false` to keep this layout working, and the build prints
-  deprecation warnings about them. The long-term fix is to move the Android app
-  into its own `:androidApp` module and switch `composeApp` to the
-  `com.android.kotlin.multiplatform.library` plugin
-  ([guide](https://kotl.in/gradle/agp-new-kmp)). After that, both flags can be removed.
+- **Compose requires `CADisableMinimumFrameDurationOnPhone`.** Compose
+  Multiplatform aborts at launch if the iOS app's `Info.plist` doesn't set this
+  key to `true`. `iosApp/iosApp/Info.plist` sets it, so keep it if you
+  regenerate the Xcode project.
 - **No Intel-Mac iOS simulator.** Compose Multiplatform 1.12 no longer publishes
   `iosX64`, so the target was removed. Use an Apple Silicon Mac or a real device.
 - **Kotlin plugin warning about Gradle 10.** Kotlin 2.4.x triggers a Gradle 10
