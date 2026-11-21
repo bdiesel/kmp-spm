@@ -1,77 +1,121 @@
 # kmp-spm
 
-A demo Kotlin Multiplatform + Compose Multiplatform project that runs on
-**Android**, **iOS** (via Swift Package Manager), and **Web** (Wasm/JS).
+A small Kotlin Multiplatform + Compose Multiplatform demo that shares one Compose UI
+across **Android**, **iOS**, and **Web (Wasm)**. On iOS, the shared Kotlin code is
+delivered to Xcode as a **Swift Package Manager (SPM)** binary package, so the
+project is named `kmp-spm`.
 
-## Layout
+The app itself is a counter screen: it greets you with the current platform name
+(for example `Hello from Android 35`, with the device's API level, or
+`Hello from Web (Mozilla/5.0)`) and has a button that increments a count. The point of the project is the build
+wiring, not the app.
+
+## How it fits together
 
 ```
 .
-├── composeApp/                       # KMP module — Android app + iOS framework + Wasm web
+├── composeApp/                       # The single KMP module
 │   └── src/
-│       ├── commonMain/               # Shared Compose UI + business logic
-│       ├── androidMain/              # Android entry point (MainActivity)
-│       ├── iosMain/                  # ComposeUIViewController bridge for iOS
-│       └── wasmJsMain/               # Wasm/JS entry point + index.html
+│       ├── commonMain/               # Shared Compose UI (App.kt) + expect fun platform()
+│       ├── androidMain/              # MainActivity, AndroidManifest, actual platform()
+│       ├── iosMain/                  # MainViewController() bridge + actual platform()
+│       └── wasmJsMain/               # Browser entry point (Main.kt) + index.html
 ├── iosApp/iosApp/                    # SwiftUI shell that hosts the Compose view
 ├── Package.swift                     # Local SPM package wrapping the XCFramework
-└── gradle/, settings.gradle.kts, …   # Standard Gradle scaffolding
+└── gradle/libs.versions.toml         # Every dependency and plugin version
 ```
 
-The iOS app does **not** depend on the Gradle/Kotlin output directly. Instead:
+- **Shared UI:** `App()` in `commonMain` is the whole UI. Each platform only
+  provides an entry point and an `actual fun platform()`.
+- **Android:** `composeApp` is also the Android application module.
+  `MainActivity` calls `setContent { App() }`.
+- **Web:** the `wasmJs` target compiles `App()` to WebAssembly and serves it from
+  `index.html`.
+- **iOS through SPM:** Xcode never runs Gradle. Instead:
+  1. Gradle builds `composeApp/build/XCFrameworks/release/Shared.xcframework`.
+  2. The root `Package.swift` exposes that XCFramework as a binary target named `Shared`.
+  3. The Xcode app adds the repo root as a local package and does `import Shared`.
+  4. `ContentView.swift` wraps the Kotlin `MainViewController()` in a
+     `UIViewControllerRepresentable`, which is the `ComposeUIViewController { App() }`.
 
-1. Gradle builds `composeApp/build/XCFrameworks/release/Shared.xcframework`.
-2. The root `Package.swift` exposes that XCFramework as a Swift Package called `Shared`.
-3. Xcode pulls in the SPM package as a local dependency.
+## Toolchain
 
-## One-time bootstrap
+| Component | Version |
+| --- | --- |
+| Gradle (wrapper) | 9.9.2 |
+| Gradle daemon JDK | JetBrains JDK 21, auto-provisioned via the foojay resolver |
+| Kotlin | 2.4.21 |
+| Android Gradle Plugin | 9.5.2 |
+| Compose Multiplatform | 1.12.2 (Material3 1.9.0) |
+| Android compileSdk / targetSdk / minSdk | 37 / 37 / 24 |
+| iOS targets | `iosArm64` (devices), `iosSimulatorArm64` (Apple Silicon simulators) |
 
-### 1. Build the iOS XCFramework
+All versions live in `gradle/libs.versions.toml`. You don't need a system-wide
+Gradle or a specific JDK: the wrapper and the daemon toolchain settings
+(`gradle/gradle-daemon-jvm.properties`) download what they need.
+
+## Getting started
+
+### Android
+
+```sh
+./gradlew :composeApp:installDebug
+```
+
+Or open the project in Android Studio and run the `composeApp` configuration.
+
+### Web (Wasm)
+
+```sh
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+Then open the URL it prints.
+
+### iOS
+
+**1. Build the XCFramework** (re-run whenever shared Kotlin code changes):
 
 ```sh
 ./gradlew :composeApp:assembleSharedReleaseXCFramework
-# or for faster iterative dev:
+# faster for day-to-day work:
 ./gradlew :composeApp:assembleSharedDebugXCFramework
 ```
 
-This produces `composeApp/build/XCFrameworks/release/Shared.xcframework` (or `debug/`).
-If you use the debug variant, edit `Package.swift` to point at `debug/` instead.
+`Package.swift` points at the `release/` output. If you build the debug variant,
+change the path in `Package.swift` to `debug/`.
 
-The Gradle wrapper is checked in, so the first run will download Gradle 8.10.2
-automatically — no system-wide `gradle` install needed.
+**2. Create the Xcode project (one-time).** The Swift sources are checked in at
+`iosApp/iosApp/`, but there is no `.xcodeproj` yet. In Xcode:
 
-### 2. Create the iOS Xcode project
+1. **File ▸ New ▸ Project ▸ iOS App.** Name it `iosApp` and save it inside `iosApp/`.
+2. Delete Xcode's generated `ContentView.swift` and `iosAppApp.swift`, then add
+   the two files already in `iosApp/iosApp/`.
+3. **File ▸ Add Package Dependencies… ▸ Add Local…** and select the repo root.
+   Add the `Shared` product to the `iosApp` target.
+4. Build and run on an Apple Silicon simulator or a device.
 
-The Swift sources live at `iosApp/iosApp/`, but the `.xcodeproj` isn't generated yet.
+If `import Shared` doesn't resolve, the XCFramework from step 1 is missing. SPM
+reads the binary target from disk, so it must be built first.
 
-In Xcode:
+## Known limitations
 
-1. **File ▸ New ▸ Project ▸ iOS App** — name it `iosApp`, save inside `iosApp/`, replacing the existing folder if asked. (Or save elsewhere and move the two `.swift` files in.)
-2. Delete Xcode's generated `ContentView.swift` and `iosAppApp.swift`; add the two files already in `iosApp/iosApp/` instead.
-3. **File ▸ Add Package Dependencies… ▸ Add Local…** — select the repo root (`/Users/brian/Dev/kmp-spm`). Add the `Shared` product to the `iosApp` target.
-4. Build & run on a simulator.
-
-> If the `Shared` import fails to resolve, make sure step 1 (`assembleShared…XCFramework`) ran first — SPM resolves the binary target by reading the file on disk.
-
-## Running each platform
-
-| Platform | Command |
-| --- | --- |
-| Android | `./gradlew :composeApp:installDebug` (or run from Android Studio) |
-| iOS | Build & run `iosApp` from Xcode |
-| Web (Wasm) | `./gradlew :composeApp:wasmJsBrowserDevelopmentRun` then open the printed URL |
-
-## Tweaking versions
-
-All versions live in `gradle/libs.versions.toml`. Bumping Kotlin, AGP, or Compose
-Multiplatform from a single place reduces compatibility surprises.
-
-## Known sharp edges
-
-- **XCFramework path** in `Package.swift` is hardcoded to `release/`. Switch to
-  `debug/` for dev iteration (smaller, faster builds), but remember to rebuild
-  whenever shared Kotlin code changes — SPM caches binary targets aggressively.
-- **Compose iOS framework size**: a hello-world XCFramework is ~40–60 MB in
-  debug. Release ARM64-only is much smaller.
-- **Configuration cache** is on. If a plugin misbehaves, disable temporarily
-  with `--no-configuration-cache`.
+- **AGP 9 compatibility flags.** `composeApp` applies both
+  `com.android.application` and `kotlin.multiplatform`, which AGP 9 no longer
+  supports by default. `gradle.properties` sets `android.builtInKotlin=false` and
+  `android.newDsl=false` to keep this layout working, and the build prints
+  deprecation warnings about them. The long-term fix is to move the Android app
+  into its own `:androidApp` module and switch `composeApp` to the
+  `com.android.kotlin.multiplatform.library` plugin
+  ([guide](https://kotl.in/gradle/agp-new-kmp)). After that, both flags can be removed.
+- **No Intel-Mac iOS simulator.** Compose Multiplatform 1.12 no longer publishes
+  `iosX64`, so the target was removed. Use an Apple Silicon Mac or a real device.
+- **Kotlin plugin warning about Gradle 10.** Kotlin 2.4.x triggers a Gradle 10
+  incompatibility warning (`KotlinNativeBundleArtifactsTypes`). It is fixed in
+  Kotlin 2.5.0.
+- **SPM caches binary targets aggressively.** After rebuilding the XCFramework,
+  you may need **File ▸ Packages ▸ Reset Package Caches** in Xcode.
+- **Framework size.** A debug Compose iOS framework is large (tens of MB). Release
+  builds are much smaller.
+- **Configuration cache is on.** If a plugin misbehaves, try
+  `--no-configuration-cache`.
