@@ -20,10 +20,6 @@ kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
         }
-        // Package Compose Multiplatform resources (composeResources/) for Android.
-        androidResources {
-            enable = true
-        }
     }
 
     val xcf = XCFramework("Shared")
@@ -56,9 +52,6 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
-            implementation(libs.compose.components.resources)
-            implementation(libs.androidx.lifecycle.viewmodel)
-            implementation(libs.androidx.lifecycle.runtime.compose)
         }
     }
 }
