@@ -7,10 +7,78 @@ project is named `kmp-spm`.
 
 The app itself is a counter screen: it greets you with the current platform name
 (for example `Hello from Android 35`, with the device's API level, or
-`Hello from Web (Mozilla/5.0)`) and has a button that increments a count. The point of the project is the build
-wiring, not the app.
+`Hello from Web (Mozilla/5.0)`) and has a button that increments a count. The
+point of the project is the build wiring, not the app.
 
-## How it fits together
+## Architecture
+
+One Compose UI in `commonMain` is compiled for three platforms. Each platform
+adds only a thin entry point. On iOS, the Kotlin output goes through a Swift
+Package before the app sees it.
+
+```mermaid
+flowchart TB
+    subgraph common["composeApp · commonMain"]
+        App["App()<br/>shared Compose UI"]
+        Plat["expect fun platform()"]
+    end
+
+    subgraph android["Android · androidMain"]
+        MA["MainActivity<br/>setContent { App() }"] --> APK["APK"]
+    end
+
+    subgraph web["Web · wasmJsMain"]
+        WM["Main.kt<br/>ComposeViewport { App() }"] --> WASM["composeApp.wasm<br/>+ index.html"]
+    end
+
+    subgraph ios["iOS"]
+        MVC["iosMain · MainViewController()<br/>ComposeUIViewController { App() }"]
+        XCF["Shared.xcframework<br/>(Kotlin/Native, built by Gradle)"]
+        PKG["Package.swift<br/>binaryTarget 'Shared'"]
+        XP["iosApp.xcodeproj<br/>local package dependency"]
+        CV["ContentView.swift<br/>import Shared · UIViewControllerRepresentable"]
+        MVC --> XCF --> PKG --> XP --> CV
+    end
+
+    App --> MA
+    App --> WM
+    App --> MVC
+    Plat -. "actual per platform" .-> android
+    Plat -. "actual per platform" .-> web
+    Plat -. "actual per platform" .-> ios
+```
+
+### What happens when you run the iOS app
+
+Xcode never calls Kotlin directly. The scheme rebuilds the XCFramework first,
+then the normal Xcode build links it through SPM:
+
+```mermaid
+sequenceDiagram
+    actor Dev as You
+    participant IDE as Android Studio / Xcode
+    participant Pre as Scheme pre-action
+    participant G as Gradle
+    participant X as Xcode build
+    participant Dev2 as Simulator / iPhone
+
+    Dev->>IDE: Run iosApp
+    IDE->>Pre: start iosApp scheme build
+    Pre->>G: ./gradlew :composeApp:assembleSharedDebugXCFramework
+    G-->>Pre: Shared.xcframework + gradle.log
+    Pre->>Pre: write build/xcode-gradle/status (ok or failed)
+    IDE->>X: build iosApp target
+    X->>X: "Check Gradle XCFramework build" phase reads status
+    alt Gradle failed
+        X-->>IDE: build error + tail of gradle.log
+    else Gradle succeeded
+        X->>X: resolve local package Shared, compile Swift, link
+        X-->>IDE: iosApp.app
+        IDE->>Dev2: install and launch
+    end
+```
+
+## Project layout
 
 ```
 .
@@ -31,12 +99,19 @@ wiring, not the app.
   `MainActivity` calls `setContent { App() }`.
 - **Web:** the `wasmJs` target compiles `App()` to WebAssembly and serves it from
   `index.html`.
-- **iOS through SPM:** Xcode never runs Gradle. Instead:
-  1. Gradle builds `composeApp/build/XCFrameworks/release/Shared.xcframework`.
+- **iOS through SPM:** the app links the Kotlin code as a prebuilt binary package:
+  1. Gradle builds `composeApp/build/XCFrameworks/debug/Shared.xcframework`.
   2. The root `Package.swift` exposes that XCFramework as a binary target named `Shared`.
-  3. The Xcode app adds the repo root as a local package and does `import Shared`.
+  3. `iosApp/iosApp.xcodeproj` depends on the repo root as a local package and
+     does `import Shared`.
   4. `ContentView.swift` wraps the Kotlin `MainViewController()` in a
      `UIViewControllerRepresentable`, which is the `ComposeUIViewController { App() }`.
+
+  The `iosApp` scheme has a pre-action that runs step 1 before every build, so
+  Kotlin changes are picked up automatically. Xcode ignores pre-action failures,
+  so the script records the result in `build/xcode-gradle/status`. The
+  "Check Gradle XCFramework build" build phase then fails the build with the
+  Gradle error if it failed. The full Gradle log is in `build/xcode-gradle/gradle.log`.
 
 ## Toolchain
 
@@ -74,29 +149,38 @@ Then open the URL it prints.
 
 ### iOS
 
-**1. Build the XCFramework** (re-run whenever shared Kotlin code changes):
+Requirements: a Mac with Xcode and its iOS platform component installed
+(**Xcode ▸ Settings ▸ Components**, or `xcodebuild -downloadPlatform iOS`).
+
+**First time only:** build the XCFramework once so Xcode can resolve the
+`Shared` package when it opens the project:
 
 ```sh
-./gradlew :composeApp:assembleSharedReleaseXCFramework
-# faster for day-to-day work:
 ./gradlew :composeApp:assembleSharedDebugXCFramework
 ```
 
-`Package.swift` points at the `release/` output. If you build the debug variant,
-change the path in `Package.swift` to `debug/`.
+After that, the scheme rebuilds it automatically.
 
-**2. Create the Xcode project (one-time).** The Swift sources are checked in at
-`iosApp/iosApp/`, but there is no `.xcodeproj` yet. In Xcode:
+**From Android Studio:** install the **Kotlin Multiplatform** plugin
+(**Settings ▸ Plugins ▸ Marketplace**) and restart. Studio detects
+`iosApp/iosApp.xcodeproj` and offers an `iosApp` run configuration. Pick a
+simulator or a connected iPhone and click Run.
 
-1. **File ▸ New ▸ Project ▸ iOS App.** Name it `iosApp` and save it inside `iosApp/`.
-2. Delete Xcode's generated `ContentView.swift` and `iosAppApp.swift`, then add
-   the two files already in `iosApp/iosApp/`.
-3. **File ▸ Add Package Dependencies… ▸ Add Local…** and select the repo root.
-   Add the `Shared` product to the `iosApp` target.
-4. Build and run on an Apple Silicon simulator or a device.
+**From Xcode:** open `iosApp/iosApp.xcodeproj`, select the `iosApp` scheme and a
+destination, and run.
 
-If `import Shared` doesn't resolve, the XCFramework from step 1 is missing. SPM
-reads the binary target from disk, so it must be built first.
+**From the command line:**
+
+```sh
+xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
+  -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+To run on a physical iPhone, choose your Apple ID team under **Signing &
+Capabilities** in Xcode first. The checked-in project has no team set.
+
+For a release build, run `assembleSharedReleaseXCFramework` and change `debug`
+to `release` in `Package.swift`. The scheme pre-action always builds debug.
 
 ## Known limitations
 
@@ -113,8 +197,8 @@ reads the binary target from disk, so it must be built first.
 - **Kotlin plugin warning about Gradle 10.** Kotlin 2.4.x triggers a Gradle 10
   incompatibility warning (`KotlinNativeBundleArtifactsTypes`). It is fixed in
   Kotlin 2.5.0.
-- **SPM caches binary targets aggressively.** After rebuilding the XCFramework,
-  you may need **File ▸ Packages ▸ Reset Package Caches** in Xcode.
+- **SPM caches binary targets aggressively.** If Xcode seems to run stale Kotlin
+  code, use **File ▸ Packages ▸ Reset Package Caches**.
 - **Framework size.** A debug Compose iOS framework is large (tens of MB). Release
   builds are much smaller.
 - **Configuration cache is on.** If a plugin misbehaves, try
