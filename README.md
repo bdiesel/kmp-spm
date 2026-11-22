@@ -10,6 +10,11 @@ The app itself is a counter screen: it greets you with the current platform name
 `Hello from Web (Mozilla/5.0)`) and has a button that increments a count. The
 point of the project is the build wiring, not the app.
 
+The `sdk-swift-export` branch adds an experimental, reusable **SDK** (`:sdk`)
+for iOS and Web. It uses Kotlin's Swift export instead of an Objective-C
+framework, and its layers follow Android's app architecture guide. See
+[Experimental SDK](#experimental-sdk-sdk).
+
 ## Architecture
 
 One Compose UI in `commonMain` is compiled for three platforms. Each platform
@@ -89,6 +94,8 @@ sequenceDiagram
 │       ├── iosMain/                  # MainViewController() bridge + actual platform()
 │       └── wasmJsMain/               # Browser entry point (Main.kt) + index.html
 ├── androidApp/                       # Android application: MainActivity + AndroidManifest
+├── sdk/                              # Experimental SDK for iOS (Swift export) and Web (npm package)
+├── sdkSampleIos/                     # SwiftUI sample app that uses the SDK through Swift export
 ├── iosApp/
 │   ├── iosApp/                       # SwiftUI shell that hosts the Compose view + Info.plist
 │   └── iosApp.xcodeproj              # Xcode project with the iosApp scheme
@@ -242,6 +249,155 @@ Capabilities** in Xcode first. The checked-in project has no team set.
 
 For a release build, run `assembleSharedReleaseXCFramework` and change `debug`
 to `release` in `Package.swift`. The scheme pre-action always builds debug.
+
+## Experimental SDK (`:sdk`)
+
+`:sdk` is a logic-only Kotlin Multiplatform library with no Compose, meant to
+be consumed by native apps:
+
+- **iOS:** built through **Swift export** (Alpha in Kotlin 2.4). Kotlin code
+  becomes a real Swift module named `KmpSdk`, not an Objective-C framework.
+  `suspend` functions become `async`, `Flow` becomes `AsyncSequence`, and
+  sealed classes become Swift enums you can `switch` over exhaustively.
+- **Web:** a Kotlin/JS library packaged for npm as `kmp-sdk`, with ES modules
+  and TypeScript definitions.
+
+The sample feature looks up a user by id, using fake data.
+
+### Layers
+
+The structure follows Android's
+[Guide to app architecture](https://developer.android.com/topic/architecture).
+The SDK holds the data and domain layers plus a shared UI state holder.
+Each app keeps only its native UI.
+
+```mermaid
+flowchart TB
+    subgraph apps["UI elements · in each app"]
+        Swift["SwiftUI views<br/>sdkSampleIos"]
+        Web["Web page / TS app"]
+    end
+
+    subgraph public["Public API · com.example.sdk"]
+        SDK["KmpSdk<br/>entry point + composition root"]
+        SH["UserLookupStateHolder<br/>state: Flow&lt;UserLookupUiState&gt;<br/>lookUp(id)"]
+        WebF["WebKmpSdk / WebUserLookup<br/>Promise + subscribe() (JS only)"]
+        Models["User · UserResult · UserLookupUiState"]
+    end
+
+    subgraph domain["Domain layer · internal"]
+        UC["GetUserUseCase<br/>validation, errors → values"]
+    end
+
+    subgraph data["Data layer · internal"]
+        Repo["DefaultUserRepository<br/>offline-first, main-safe"]
+        Local["InMemoryUserLocalDataSource<br/>single source of truth"]
+        Remote["FakeUserRemoteDataSource<br/>network stand-in"]
+    end
+
+    Swift -- "events" --> SH
+    SH -- "state" --> Swift
+    Web --> WebF --> SDK
+    SDK --> SH --> UC --> Repo
+    SDK --> UC
+    Repo --> Local
+    Repo --> Remote
+```
+
+| Layer | Classes | Responsibility |
+| --- | --- | --- |
+| UI: state holder | `UserLookupStateHolder`, `UserLookupUiState` | Owns screen state, receives events (unidirectional data flow). The shared equivalent of a ViewModel. |
+| Domain | `GetUserUseCase` | Business rules: trims and validates input, and turns every outcome (including errors) into a `UserResult`. |
+| Data | `UserRepository`, `DefaultUserRepository` | Exposes user data, caches it, and moves work off the main thread. |
+| Data sources | `UserRemoteDataSource`, `UserLocalDataSource` | Each one talks to exactly one source. The local store is the single source of truth. |
+
+Design rules:
+
+- **Expose as little as possible.** Only the types in `com.example.sdk` are
+  public. `domain` and `data` are `internal`, and `explicitApi()` makes every
+  public declaration deliberate. Keeping the public types in one package also
+  gives Swift short names (`KmpSdk.UserResult`, not a long package path).
+- **Manual dependency injection.** `KmpSdk` wires the graph through
+  constructors. Hilt is Android-only, and a DI framework would leak into the
+  Swift and JavaScript APIs. Tests inject fakes through `internal`
+  constructors.
+- **Errors are values.** `UserResult.Failure` and `UserLookupUiState.Error`
+  reach Swift as enum cases and JavaScript as classes. Apps never need to
+  catch Kotlin exceptions.
+- **Swift-friendly types.** Public classes are final, results are sealed, and
+  the public API has no generics or custom collections. Kotlin `Int` is
+  `Int32` in Swift.
+- **JS needs a thin adapter.** JavaScript can't call `suspend` functions or
+  collect a `Flow`, so `jsMain` adds `WebKmpSdk` and `WebUserLookup`. They
+  return Promises and offer `subscribe(callback)`, which returns an
+  unsubscribe function.
+
+To add a real backend, implement `UserRemoteDataSource` with Ktor. For
+persistence across launches, implement `UserLocalDataSource` with SQLDelight
+or Room KMP. Nothing above the data layer changes.
+
+### Using it from Swift
+
+```swift
+import KmpSdk
+
+let sdk = KmpSdk()                         // one per app
+let result = try await sdk.getUser(id: "2") // suspend → async
+switch result.sealedType() {                // sealed → exhaustive enum
+case .found(let f):    print(f.value.user.name)
+case .notFound(let n): print("no user \(n.value.id)")
+case .failure(let e):  print(e.value.message)
+}
+
+let lookup = sdk.createUserLookup()
+for try await state in lookup.state.asAsyncSequence() { /* render */ }
+```
+
+### Using it from TypeScript / JavaScript
+
+```ts
+import { WebKmpSdk, UserResult } from "kmp-sdk";
+
+const sdk = new WebKmpSdk();
+const result = await sdk.getUser("2");
+if (result instanceof UserResult.Found) console.log(result.user.name);
+
+const lookup = sdk.createUserLookup();
+const unsubscribe = lookup.subscribe(state => console.log(state.toString()));
+lookup.lookUp("3"); // Idle → Loading(id=3) → Success(...)
+```
+
+### Building and testing
+
+```sh
+./gradlew :sdk:allTests                               # iOS simulator, Node and browser
+./gradlew :sdk:jsBrowserProductionLibraryDistribution # npm package
+```
+
+The npm package lands in `sdk/build/dist/js/productionLibrary/`
+(`package.json`, `kmp-sdk.mjs`, `kmp-sdk.d.mts`). Run `npm publish` from that
+folder, or `npm install <path>` it into a web app.
+
+For iOS, open `sdkSampleIos/SdkSample.xcodeproj` and run the `SdkSample` scheme.
+Its first build phase runs `./gradlew :sdk:embedSwiftExportForXcode`, which
+compiles the SDK and puts the generated `KmpSdk` Swift module into Xcode's
+build products. Try ids `1`–`3`, an unknown id, or `error` (a simulated
+network failure).
+
+### Swift export limitations (Kotlin 2.4)
+
+- **iOS 18 minimum.** The generated coroutine support uses Swift's `Mutex`, so
+  `async` and `Flow` interop require iOS 18.
+- **The app has to build the SDK itself.** The only supported setup is direct
+  integration: the app's Xcode project runs Gradle (`embedSwiftExportForXcode`).
+  There's no supported way yet to ship a prebuilt XCFramework or Swift package
+  to other teams. Gradle does generate an SPM package internally
+  (`sdk/build/SPMPackage/`), and Kotlin 2.5 reworks the export DSL with
+  publishing in mind.
+- **Apple Silicon simulators only.** The sample excludes `x86_64` for the
+  simulator.
+- **Alpha.** Expect breaking changes. Generic types are erased, and types that
+  inherit from `List`, `Set` or `Map` aren't exported.
 
 ## Known limitations
 
