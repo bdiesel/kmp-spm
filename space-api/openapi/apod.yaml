@@ -1,0 +1,145 @@
+openapi: 3.0.3
+info:
+  title: NASA APOD Basic API
+  version: 1.0.0
+  description: |
+    Astronomy Picture of the Day, served by NASA Science's WordPress plugin
+    ("APOD Basic"). NASA publishes no OpenAPI spec for it; this one is written
+    from the "APOD Feed And API User Guide" (api.nasa.gov/assets/files/apod/
+    APOD-APIs-and-RSS-info.pdf) and checked against live responses
+    (75 entries, 2013–2026: every field present, all strings except post_id).
+
+    No API key is required. Dates in requests use the legacy APOD date code
+    YYMMDD (e.g. 140918); dates in responses use YYYY-MM-DD.
+servers:
+  - url: https://science.nasa.gov/wp-json/wp/v2
+paths:
+  /apod-basic:
+    get:
+      operationId: listApod
+      tags: [Apod]
+      summary: List APOD entries, newest first
+      description: |
+        Total counts are returned in the X-WP-Total and X-WP-TotalPages headers.
+      parameters:
+        - name: page
+          in: query
+          description: Page number, starting at 1.
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          description: Results per page. The server caps this at 25.
+          schema: { type: integer, minimum: 1, maximum: 25, default: 10 }
+        - name: date_from
+          in: query
+          description: Start of a date range, as a YYMMDD date code.
+          schema: { $ref: "#/components/schemas/DateCode" }
+        - name: date_to
+          in: query
+          description: End of a date range, as a YYMMDD date code.
+          schema: { $ref: "#/components/schemas/DateCode" }
+      responses:
+        "200":
+          description: A page of APOD entries.
+          headers:
+            X-WP-Total:
+              description: Total number of entries matching the query.
+              schema: { type: integer }
+            X-WP-TotalPages:
+              description: Total number of pages.
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Apod" }
+        "400":
+          $ref: "#/components/responses/WpError"
+  /apod-basic/{date}:
+    get:
+      operationId: getApodByDate
+      tags: [Apod]
+      summary: Get one APOD entry by its date code
+      parameters:
+        - name: date
+          in: path
+          required: true
+          description: The APOD date as a YYMMDD date code (e.g. 140918).
+          schema: { $ref: "#/components/schemas/DateCode" }
+      responses:
+        "200":
+          description: The APOD entry for that date.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Apod" }
+        "400":
+          $ref: "#/components/responses/WpError"
+        "404":
+          $ref: "#/components/responses/WpError"
+components:
+  responses:
+    WpError:
+      description: WordPress REST error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/WpError" }
+  schemas:
+    DateCode:
+      type: string
+      pattern: "^[0-9]{6}$"
+      example: "140918"
+    Apod:
+      type: object
+      required: [date, post_id, title, media_type, explanation, url]
+      properties:
+        date:
+          type: string
+          format: date
+          description: APOD date (YYYY-MM-DD).
+        post_id:
+          type: integer
+          format: int64
+          description: WordPress post id.
+        title:
+          type: string
+        permalink:
+          type: string
+          description: URL of the APOD web page.
+        media_type:
+          type: string
+          description: Normalized media type, such as image, video or iframe.
+            Kept as a string so new values don't break decoding.
+        explanation:
+          type: string
+          description: Explanation text. Contains HTML.
+        credit:
+          type: string
+          description: Image credit. Contains HTML links.
+        copyright:
+          type: string
+          description: Copyright holder. Contains HTML links.
+        alt:
+          type: string
+          description: Alt text for the image. May be empty.
+        url:
+          type: string
+          description: URL of the APOD web page (same as permalink), not the image.
+        hdurl:
+          type: string
+          description: Full-size image URL.
+        basic_html:
+          type: string
+          description: Complete APOD Basic HTML document.
+        basic_html_url:
+          type: string
+          description: URL that returns basic_html as plain text.
+    WpError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: rest_invalid_param }
+        message: { type: string }
+        data:
+          type: object
+          properties:
+            status: { type: integer }
