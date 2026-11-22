@@ -10,6 +10,25 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.openapi.generator)
+    `maven-publish`
+}
+
+// Published alongside :space-sdk (it's a runtime dependency of the SDK), but
+// not meant to be used directly.
+group = providers.gradleProperty("spacesdk.group").get()
+version = providers.gradleProperty("spacesdk.version").get()
+
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/${providers.gradleProperty("spacesdk.githubRepo").get()}")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+            }
+        }
+    }
 }
 
 /** One generated client per spec. Output goes to build/generated/openapi/<name>. */
@@ -42,6 +61,12 @@ val apod = registerClient("apod", "apod.yaml", "com.example.spaceapi.apod")
 val spaceflightNews = registerClient(
     "spaceflightNews", "spaceflight-news.json", "com.example.spaceapi.spaceflightnews",
 )
+
+// AGP derives sibling folders (e.g. baselineProfiles) from each source dir and
+// reads them without inheriting the dependency on the generators; declare it.
+tasks.matching { it.name.endsWith("ArtProfile") }.configureEach {
+    dependsOn(apod, spaceflightNews)
+}
 
 kotlin {
     android {

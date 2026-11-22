@@ -37,10 +37,17 @@ android {
     }
 }
 
+// By default the sample builds against the SDK's source. With
+// -Pspacesdk.usePublished=true it uses the published artifact instead (mavenLocal,
+// then GitHub Packages), exactly as an outside app would.
+val usePublishedSdk = providers.gradleProperty("spacesdk.usePublished").map(String::toBoolean).getOrElse(false)
+val publishedSdk = providers.gradleProperty("spacesdk.group").get() + ":space-sdk:" +
+    providers.gradleProperty("spacesdk.version").get()
+
 dependencies {
     implementation(project(":composeApp"))
     // SpaceSdk as a regular Kotlin library: suspend functions, Flow and state holders directly.
-    implementation(project(":space-sdk"))
+    if (usePublishedSdk) implementation(publishedSdk) else implementation(project(":space-sdk"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.material3)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

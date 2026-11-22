@@ -15,9 +15,27 @@ import org.jetbrains.kotlin.gradle.swiftexport.ExperimentalSwiftExportDsl
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
+    `maven-publish`
 }
 
-version = "0.1.0"
+group = providers.gradleProperty("spacesdk.group").get()
+version = providers.gradleProperty("spacesdk.version").get()
+
+// Android consumers: implementation("io.github.bdiesel.spacesdk:space-sdk:<version>")
+// ./gradlew :space-sdk:publishToMavenLocal                      -> ~/.m2 (local testing)
+// ./gradlew publishAllPublicationsToGitHubPackagesRepository    -> GitHub Packages
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/${providers.gradleProperty("spacesdk.githubRepo").get()}")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+            }
+        }
+    }
+}
 
 kotlin {
     explicitApi()
