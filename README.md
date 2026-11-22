@@ -1,23 +1,63 @@
-# kmp-spm
+# kmp-spm · SpaceSdk
 
-A small Kotlin Multiplatform + Compose Multiplatform demo that shares one Compose UI
-across **Android**, **iOS**, and **Web (Wasm)**. On iOS, the shared Kotlin code is
-delivered to Xcode as a **Swift Package Manager (SPM)** binary package, so the
-project is named `kmp-spm`.
+An experiment in building **one Kotlin Multiplatform SDK that native apps on
+Android and iOS can consume**, from OpenAPI specs to a published package, with
+sample apps on top to demonstrate it.
 
-The app itself is a counter screen: it greets you with the current platform name
-(for example `Hello from Android 35`, with the device's API level, or
-`Hello from Web (Mozilla/5.0)`) and has a button that increments a count. The
-point of the project is the build wiring, not the app.
+## What this project does
 
-This branch (`space-sdk`) adds **SpaceSdk**, an experimental, reusable SDK for
-**Android and iOS** built from OpenAPI specs. It shows NASA's Astronomy Picture
-of the Day and the latest spaceflight news. On iOS it ships as a prebuilt Swift
-package made with Kotlin's Swift export. Its layers follow Android's app
-architecture guide. See [SpaceSdk](#spacesdk). (The earlier iOS + Web version
-of the SDK is on the `sdk-swift-export` branch.)
+**SpaceSdk** wraps two public APIs behind one small, native-feeling API:
 
-## Architecture
+- **NASA's Astronomy Picture of the Day (APOD):** today's picture, or any
+  date back to 1995.
+- **Spaceflight News:** the latest articles from space news sites.
+
+The pipeline:
+
+1. **OpenAPI specs** describe the APIs (`space-api/openapi/`). NASA publishes
+   none for APOD, so that one is written by hand; Spaceflight News publishes
+   its own.
+2. **OpenAPI Generator** turns the specs into a Kotlin Multiplatform HTTP
+   client (Ktor), regenerated on every build.
+3. **SpaceSdk** (`space-sdk/`) layers a clean API on top, following Android's
+   app architecture guide: data layer (caching, mapping), domain layer
+   (validation), and shared UI state holders. Generated code never leaks out.
+4. **Each platform consumes it natively:**
+   - **Android:** a regular Kotlin library.
+   - **iOS:** a prebuilt Swift package (Kotlin's Swift export), so Swift code
+     gets `async` functions, `AsyncSequence` streams and exhaustive enums.
+5. **Sample apps** put a UI on top to demonstrate the SDK.
+
+### Two ways to use the SDK
+
+1. **Native UI on each platform** (this branch): separate apps, each with its
+   own UI, consuming the same SDK. The Android sample uses Jetpack Compose; the
+   iOS sample uses SwiftUI. Business logic and screen state live in the SDK,
+   and each app only renders it.
+2. **Shared Compose Multiplatform UI** (planned): one Compose UI on top of the
+   same SDK, running on both platforms.
+
+### Screenshots
+
+The same SDK, rendered by each platform's own UI toolkit:
+
+| | Picture of the Day | Space News |
+| --- | --- | --- |
+| **Android** (Jetpack Compose) | <img src="docs/screenshots/android-picture.png" width="240" alt="Android: Picture of the Day"> | <img src="docs/screenshots/android-news.png" width="240" alt="Android: Space News"> |
+| **iOS** (SwiftUI) | <img src="docs/screenshots/ios-picture.png" width="240" alt="iOS: Picture of the Day"> | <img src="docs/screenshots/ios-news.png" width="240" alt="iOS: Space News"> |
+
+See [SpaceSdk](#spacesdk) for the API, layers and build steps.
+
+### Where this started
+
+The repo began as a Compose Multiplatform demo: one shared counter screen on
+**Android**, **iOS** and **Web (Wasm)**, with the iOS framework delivered to
+Xcode through a **Swift Package Manager (SPM)** binary package (hence
+`kmp-spm`). That app (`composeApp`, `iosApp`) and its build wiring are still
+here and documented below. The earlier iOS + Web version of the SDK is on the
+`sdk-swift-export` branch.
+
+## Original demo app: architecture
 
 One Compose UI in `commonMain` is compiled for three platforms. Each platform
 adds only a thin entry point. On iOS, the Kotlin output goes through a Swift
