@@ -425,11 +425,80 @@ when (val result = sdk.getPictureOfTheDay("2014-09-18")) {
 Tests run offline: the generated clients are fed recorded real responses
 through Ktor's `MockEngine`.
 
-**iOS sample:** run `./gradlew :space-sdk:exportDebugSwiftPackage` once (and
-after SDK changes), then open `sdkSampleIos/SdkSample.xcodeproj` and run the
-`SdkSample` scheme. The project adds `space-sdk/SwiftPackage/Debug` as a local
-package (product `SpaceSdkLibrary`). If Xcode shows stale SDK code, use
-**File ▸ Packages ▸ Reset Package Caches**.
+**iOS sample:** open `sdkSampleIos/SdkSample.xcodeproj` and run the
+`SdkSample` scheme. It installs the **published** package from
+`https://github.com/bdiesel/SpaceSdk-swift`, like any outside app. To try
+unreleased SDK changes, run `./gradlew :space-sdk:exportDebugSwiftPackage` and
+drag the `space-sdk/SwiftPackage/Debug` folder into the Xcode project: a local
+package with the same name overrides the remote one until you remove it.
+
+**Android sample:** builds against the SDK source by default. Add
+`-Pspacesdk.usePublished=true` to use the published artifact instead (Maven
+Local first, then GitHub Packages).
+
+## Installing SpaceSdk
+
+### iOS (Swift Package Manager)
+
+In Xcode: **File ▸ Add Package Dependencies…** →
+`https://github.com/bdiesel/SpaceSdk-swift` → version `0.1.0` → product
+**SpaceSdkLibrary**. Or in a `Package.swift`:
+
+```swift
+.package(url: "https://github.com/bdiesel/SpaceSdk-swift", from: "0.1.0")
+// target dependency: .product(name: "SpaceSdkLibrary", package: "SpaceSdk-swift")
+```
+
+The repo holds `Package.swift` and the generated Swift sources; the compiled
+Kotlin (`SpaceSdkKotlin.xcframework`) is a zip on the GitHub release, verified
+by checksum. No token is needed. Requires iOS 18.
+
+### Android (Maven)
+
+```kotlin
+// settings.gradle.kts
+repositories {
+    maven("https://maven.pkg.github.com/bdiesel/kmp-spm") {
+        credentials {
+            username = "<github user>"
+            password = "<token with read:packages>" // keep it in ~/.gradle/gradle.properties
+        }
+    }
+}
+// build.gradle.kts
+implementation("io.github.bdiesel.spacesdk:space-sdk:0.1.0")
+```
+
+GitHub Packages requires a token even to download public packages.
+
+## Publishing a release
+
+The version lives in `gradle.properties` (`spacesdk.version`).
+
+**iOS:**
+
+```sh
+scripts/release-swift-package.sh            # -> build/swift-release/<version>/
+```
+
+The script exports the release Swift package, zips the XCFramework, and
+rewrites `Package.swift` to download it from
+`github.com/bdiesel/SpaceSdk-swift/releases/download/<version>/` with its
+checksum. Then copy `package/` into the `SpaceSdk-swift` repo, commit, tag
+`<version>`, and create a GitHub release with the zip attached
+(`gh release create <version> SpaceSdkKotlin.xcframework.zip`). The zip and
+the checksum must come from the same script run.
+
+**Android:**
+
+```sh
+# needs a token with write:packages: gh auth refresh -s write:packages,read:packages
+GITHUB_ACTOR=bdiesel GITHUB_TOKEN=$(gh auth token) \
+  ./gradlew :space-api:publishAllPublicationsToGitHubPackagesRepository \
+            :space-sdk:publishAllPublicationsToGitHubPackagesRepository
+```
+
+Use `publishToMavenLocal` instead to test the artifacts locally.
 
 To update the Spaceflight News API, re-download its spec
 (`https://api.spaceflightnewsapi.net/v4/schema/?format=json`) into
@@ -442,9 +511,10 @@ needs changing.
   candidates; Swift export is Beta and its Gradle DSL is marked experimental.
 - **iOS 18 minimum** for the Swift package: Swift export's coroutine support
   uses Swift's `Mutex`.
-- **Distribution by URL isn't documented yet.** The exported package works as
-  a local package; shipping it to other teams (e.g. a release or a separate
-  repo) is the next experiment.
+- **Swift package distribution is our own setup.** JetBrains documents the
+  exported package as a local package; serving it from a separate repo with a
+  release zip (see [Publishing a release](#publishing-a-release)) works but
+  isn't an official workflow yet.
 - **Apple Silicon simulators only** (`x86_64` is excluded).
 - **In-memory cache.** Data is cached for the app's lifetime; swap in
   SQLDelight or Room KMP for persistence across launches.
