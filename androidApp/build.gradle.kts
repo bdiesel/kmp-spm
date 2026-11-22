@@ -39,5 +39,12 @@ android {
 
 dependencies {
     implementation(project(":composeApp"))
+    // SpaceSdk as a regular Kotlin library: suspend functions, Flow and state holders directly.
+    implementation(project(":space-sdk"))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.compose.material3)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 }

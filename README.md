@@ -10,10 +10,12 @@ The app itself is a counter screen: it greets you with the current platform name
 `Hello from Web (Mozilla/5.0)`) and has a button that increments a count. The
 point of the project is the build wiring, not the app.
 
-The `sdk-swift-export` branch adds an experimental, reusable **SDK** (`:sdk`)
-for iOS and Web. It uses Kotlin's Swift export instead of an Objective-C
-framework, and its layers follow Android's app architecture guide. See
-[Experimental SDK](#experimental-sdk-sdk).
+This branch (`space-sdk`) adds **SpaceSdk**, an experimental, reusable SDK for
+**Android and iOS** built from OpenAPI specs. It shows NASA's Astronomy Picture
+of the Day and the latest spaceflight news. On iOS it ships as a prebuilt Swift
+package made with Kotlin's Swift export. Its layers follow Android's app
+architecture guide. See [SpaceSdk](#spacesdk). (The earlier iOS + Web version
+of the SDK is on the `sdk-swift-export` branch.)
 
 ## Architecture
 
@@ -93,9 +95,11 @@ sequenceDiagram
 │       ├── androidMain/              # actual platform() for Android
 │       ├── iosMain/                  # MainViewController() bridge + actual platform()
 │       └── wasmJsMain/               # Browser entry point (Main.kt) + index.html
-├── androidApp/                       # Android application: MainActivity + AndroidManifest
-├── sdk/                              # Experimental SDK for iOS (Swift export) and Web (npm package)
-├── sdkSampleIos/                     # SwiftUI sample app that uses the SDK through Swift export
+├── androidApp/                       # Android app: SpaceSdk sample screens (Compose)
+├── space-api/                        # OpenAPI specs + generated Ktor clients (internal)
+│   └── openapi/                      # apod.yaml (ours), spaceflight-news.json (published)
+├── space-sdk/                        # SpaceSdk: public API, domain + data layers
+├── sdkSampleIos/                     # SwiftUI sample using SpaceSdk's prebuilt Swift package
 ├── iosApp/
 │   ├── iosApp/                       # SwiftUI shell that hosts the Compose view + Info.plist
 │   └── iosApp.xcodeproj              # Xcode project with the iosApp scheme
@@ -107,9 +111,9 @@ sequenceDiagram
   provides an entry point and an `actual fun platform()`.
 - **Android:** `composeApp` is an Android library
   (`com.android.kotlin.multiplatform.library`). The separate `:androidApp`
-  module is the Android application: it depends on `:composeApp`, and its
-  `MainActivity` calls `setContent { App() }`. This two-module layout is what
-  AGP 9 requires for Kotlin Multiplatform projects.
+  module is the Android application. On this branch its `MainActivity` shows
+  the SpaceSdk sample instead of the shared counter `App()`. This two-module
+  layout is what AGP 9 requires for Kotlin Multiplatform projects.
 - **Web:** the `wasmJs` target compiles `App()` to WebAssembly and serves it from
   `index.html`.
 - **iOS through SPM:** the app links the Kotlin code as a prebuilt binary package:
@@ -132,10 +136,12 @@ sequenceDiagram
 | --- | --- |
 | Gradle (wrapper) | 9.9.2 |
 | Gradle daemon JDK | JetBrains JDK 21, auto-provisioned via the foojay resolver |
-| Kotlin | 2.4.21 |
+| Kotlin | 2.5.0-RC (preview, for Swift package export) |
 | Android Gradle Plugin | 9.5.2 |
-| Compose Multiplatform | 1.12.2 (Material3 1.9.0) |
-| Android compileSdk / targetSdk / minSdk | 37 / 37 / 24 |
+| Compose Multiplatform | 1.13.0-rc01 (Material3 1.13.0-rc01) |
+| Android compileSdk / targetSdk / minSdk | 37.2 / 37 / 24 (Compose 1.13 needs 37.1+) |
+| OpenAPI Generator | 7.27.0 (`kotlin` generator, `multiplatform` library) |
+| Ktor / kotlinx.serialization | 3.6.1 / 1.13.0 |
 | iOS targets | `iosArm64` (devices), `iosSimulatorArm64` (Apple Silicon simulators) |
 
 All versions live in `gradle/libs.versions.toml`. You don't need a system-wide
@@ -151,6 +157,7 @@ Gradle or a specific JDK: the wrapper and the daemon toolchain settings
 ```
 
 Or open the project in Android Studio and run the `androidApp` configuration.
+On this branch the app is the SpaceSdk sample (needs internet).
 
 ### Web (Wasm)
 
@@ -250,154 +257,162 @@ Capabilities** in Xcode first. The checked-in project has no team set.
 For a release build, run `assembleSharedReleaseXCFramework` and change `debug`
 to `release` in `Package.swift`. The scheme pre-action always builds debug.
 
-## Experimental SDK (`:sdk`)
+## SpaceSdk
 
-`:sdk` is a logic-only Kotlin Multiplatform library with no Compose, meant to
-be consumed by native apps:
+`:space-sdk` is a logic-only Kotlin Multiplatform SDK (no Compose) for native
+apps. It wraps two public APIs, neither of which needs an API key:
 
-- **iOS:** built through **Swift export** (Alpha in Kotlin 2.4). Kotlin code
-  becomes a real Swift module named `KmpSdk`, not an Objective-C framework.
-  `suspend` functions become `async`, `Flow` becomes `AsyncSequence`, and
-  sealed classes become Swift enums you can `switch` over exhaustively.
-- **Web:** a Kotlin/JS library packaged for npm as `kmp-sdk`, with ES modules
-  and TypeScript definitions.
+- **NASA Astronomy Picture of the Day (APOD)**, from NASA Science's
+  WordPress feed (`science.nasa.gov/wp-json/wp/v2/apod-basic`). NASA publishes
+  no OpenAPI spec for it, so `space-api/openapi/apod.yaml` is written by hand
+  from NASA's APOD feed guide and checked against live responses.
+- **Spaceflight News API** v4, whose published spec is checked in as
+  `space-api/openapi/spaceflight-news.json`.
 
-The sample feature looks up a user by id, using fake data.
+How apps get it:
+
+- **Android:** a regular Kotlin library (`implementation(project(":space-sdk"))`).
+  Apps call `suspend` functions and collect `Flow` directly.
+- **iOS:** a **prebuilt Swift package** produced by Kotlin's Swift export
+  (Beta in Kotlin 2.5). Apps add it like any package and `import SpaceSdk`; no
+  Gradle runs in the app's build. `suspend` → `async`, `Flow` →
+  `AsyncSequence`, sealed classes → Swift enums.
 
 ### Layers
 
 The structure follows Android's
 [Guide to app architecture](https://developer.android.com/topic/architecture).
-The SDK holds the data and domain layers plus a shared UI state holder.
-Each app keeps only its native UI.
+The SDK holds the data and domain layers plus shared UI state holders; each
+app keeps only its native UI.
 
 ```mermaid
 flowchart TB
     subgraph apps["UI elements · in each app"]
-        Swift["SwiftUI views<br/>sdkSampleIos"]
-        Web["Web page / TS app"]
+        Swift["SwiftUI · sdkSampleIos"]
+        Compose["Jetpack Compose · androidApp"]
     end
 
-    subgraph public["Public API · com.example.sdk"]
-        SDK["KmpSdk<br/>entry point + composition root"]
-        SH["UserLookupStateHolder<br/>state: Flow&lt;UserLookupUiState&gt;<br/>lookUp(id)"]
-        WebF["WebKmpSdk / WebUserLookup<br/>Promise + subscribe() (JS only)"]
-        Models["User · UserResult · UserLookupUiState"]
+    subgraph public["Public API · com.example.spacesdk"]
+        SDK["SpaceSdk<br/>entry point + composition root"]
+        SH["PictureOfTheDayStateHolder · NewsStateHolder<br/>state: Flow · events"]
+        Models["PictureOfTheDay · NewsArticle · MediaType<br/>results + UI states (sealed)"]
     end
 
     subgraph domain["Domain layer · internal"]
-        UC["GetUserUseCase<br/>validation, errors → values"]
+        UC["GetPictureOfTheDayUseCase · GetLatestNewsUseCase<br/>validation, errors → values"]
     end
 
     subgraph data["Data layer · internal"]
-        Repo["DefaultUserRepository<br/>offline-first, main-safe"]
-        Local["InMemoryUserLocalDataSource<br/>single source of truth"]
-        Remote["FakeUserRemoteDataSource<br/>network stand-in"]
+        Repo["DefaultApodRepository · DefaultNewsRepository<br/>offline-first cache, main-safe"]
+        Remote["Generated*RemoteDataSource<br/>generated models → SDK models, HTML → text"]
+    end
+
+    subgraph api[":space-api · internal"]
+        Gen["ApodApi · ArticlesApi<br/>generated by OpenAPI Generator (Ktor)"]
     end
 
     Swift -- "events" --> SH
     SH -- "state" --> Swift
-    Web --> WebF --> SDK
-    SDK --> SH --> UC --> Repo
-    SDK --> UC
-    Repo --> Local
-    Repo --> Remote
+    Compose -- "events" --> SH
+    SH -- "state" --> Compose
+    SDK --> SH --> UC --> Repo --> Remote --> Gen
 ```
 
 | Layer | Classes | Responsibility |
 | --- | --- | --- |
-| UI: state holder | `UserLookupStateHolder`, `UserLookupUiState` | Owns screen state, receives events (unidirectional data flow). The shared equivalent of a ViewModel. |
-| Domain | `GetUserUseCase` | Business rules: trims and validates input, and turns every outcome (including errors) into a `UserResult`. |
-| Data | `UserRepository`, `DefaultUserRepository` | Exposes user data, caches it, and moves work off the main thread. |
-| Data sources | `UserRemoteDataSource`, `UserLocalDataSource` | Each one talks to exactly one source. The local store is the single source of truth. |
+| UI: state holders | `PictureOfTheDayStateHolder`, `NewsStateHolder` | Own screen state (`Loading` / `Success` / `NotFound` / `Error`) and receive events. The shared equivalent of a ViewModel. |
+| Domain | `GetPictureOfTheDayUseCase`, `GetLatestNewsUseCase` | Validate input (dates, limits) and turn every outcome into a sealed result. |
+| Data | `DefaultApodRepository`, `DefaultNewsRepository` | Cache results (single source of truth), fall back to cached data offline, run off the main thread. |
+| Data sources | `GeneratedApodRemoteDataSource`, `GeneratedNewsRemoteDataSource` | Call the generated clients and map their models to SDK models (plain text, `String` dates). |
+| Generated | `:space-api` (`ApodApi`, `ArticlesApi`, models) | Regenerated from the specs on every build into `space-api/build/generated/openapi/`. Never committed. |
 
 Design rules:
 
-- **Expose as little as possible.** Only the types in `com.example.sdk` are
-  public. `domain` and `data` are `internal`, and `explicitApi()` makes every
-  public declaration deliberate. Keeping the public types in one package also
-  gives Swift short names (`KmpSdk.UserResult`, not a long package path).
-- **Manual dependency injection.** `KmpSdk` wires the graph through
-  constructors. Hilt is Android-only, and a DI framework would leak into the
-  Swift and JavaScript APIs. Tests inject fakes through `internal`
-  constructors.
-- **Errors are values.** `UserResult.Failure` and `UserLookupUiState.Error`
-  reach Swift as enum cases and JavaScript as classes. Apps never need to
-  catch Kotlin exceptions.
-- **Swift-friendly types.** Public classes are final, results are sealed, and
-  the public API has no generics or custom collections. Kotlin `Int` is
-  `Int32` in Swift.
-- **JS needs a thin adapter.** JavaScript can't call `suspend` functions or
-  collect a `Flow`, so `jsMain` adds `WebKmpSdk` and `WebUserLookup`. They
-  return Promises and offer `subscribe(callback)`, which returns an
-  unsubscribe function.
-
-To add a real backend, implement `UserRemoteDataSource` with Ktor. For
-persistence across launches, implement `UserLocalDataSource` with SQLDelight
-or Room KMP. Nothing above the data layer changes.
+- **Generated code stays internal.** `:space-sdk` depends on `:space-api` as
+  `implementation`, so Swift export and Android apps never see generated or
+  Ktor types. The exported Swift API contains only SDK types.
+- **Expose as little as possible.** Only `com.example.spacesdk` is public;
+  `explicitApi()` makes every public declaration deliberate.
+- **Swift-friendly types.** Dates are ISO strings, `MediaType` is a plain enum,
+  results are sealed, lists are `List<T>` (Swift arrays). No generics or date
+  library types in the public API.
+- **Errors are values.** HTTP errors keep a short message; network failures get
+  a friendly sentence instead of a raw platform error.
+- **Manual dependency injection.** `SpaceSdk` wires the graph through
+  constructors; tests inject fakes through `internal` constructors.
+- **Base URLs are set in code**, not taken from specs: the published
+  Spaceflight News spec has no `servers` entry, so the generator would default
+  to `http://localhost`.
 
 ### Using it from Swift
 
 ```swift
-import KmpSdk
+import SpaceSdk
 
-let sdk = KmpSdk()                         // one per app
-let result = try await sdk.getUser(id: "2") // suspend → async
-switch result.sealedType() {                // sealed → exhaustive enum
-case .found(let f):    print(f.value.user.name)
-case .notFound(let n): print("no user \(n.value.id)")
-case .failure(let e):  print(e.value.message)
+let sdk = SpaceSdk()                                // one per app
+let result = try await sdk.getPictureOfTheDay()     // suspend → async
+switch result.sealedType() {                        // sealed → exhaustive enum
+case .success(let s):  print(s.value.picture.title)
+case .notFound(let n): print("no APOD for \(n.value.date)")
+case .failure(let f):  print(f.value.message)
 }
 
-let lookup = sdk.createUserLookup()
-for try await state in lookup.state.asAsyncSequence() { /* render */ }
+let news = sdk.createNews(limit: 20)                // state holder, starts loading
+for try await state in news.state.asAsyncSequence() { /* render */ }
 ```
 
-### Using it from TypeScript / JavaScript
+### Using it from Kotlin (Android)
 
-```ts
-import { WebKmpSdk, UserResult } from "kmp-sdk";
-
-const sdk = new WebKmpSdk();
-const result = await sdk.getUser("2");
-if (result instanceof UserResult.Found) console.log(result.user.name);
-
-const lookup = sdk.createUserLookup();
-const unsubscribe = lookup.subscribe(state => console.log(state.toString()));
-lookup.lookUp("3"); // Idle → Loading(id=3) → Success(...)
+```kotlin
+val sdk = SpaceSdk()
+when (val result = sdk.getPictureOfTheDay("2014-09-18")) {
+    is PictureOfTheDayResult.Success -> show(result.picture)
+    is PictureOfTheDayResult.NotFound -> showEmpty(result.date)
+    is PictureOfTheDayResult.Failure -> showError(result.message)
+}
+// In a ViewModel: val picture = sdk.createPictureOfTheDay(); close() it in onCleared().
 ```
 
 ### Building and testing
 
 ```sh
-./gradlew :sdk:allTests                               # iOS simulator, Node and browser
-./gradlew :sdk:jsBrowserProductionLibraryDistribution # npm package
+./gradlew :space-api:iosSimulatorArm64Test    # generated clients vs recorded real responses
+./gradlew :space-sdk:iosSimulatorArm64Test    # all SDK layers (27 tests)
+./gradlew :space-sdk:exportDebugSwiftPackage  # -> space-sdk/SwiftPackage/Debug
+./gradlew :androidApp:installDebug            # Android sample
 ```
 
-The npm package lands in `sdk/build/dist/js/productionLibrary/`
-(`package.json`, `kmp-sdk.mjs`, `kmp-sdk.d.mts`). Run `npm publish` from that
-folder, or `npm install <path>` it into a web app.
+Tests run offline: the generated clients are fed recorded real responses
+through Ktor's `MockEngine`.
 
-For iOS, open `sdkSampleIos/SdkSample.xcodeproj` and run the `SdkSample` scheme.
-Its first build phase runs `./gradlew :sdk:embedSwiftExportForXcode`, which
-compiles the SDK and puts the generated `KmpSdk` Swift module into Xcode's
-build products. Try ids `1`–`3`, an unknown id, or `error` (a simulated
-network failure).
+**iOS sample:** run `./gradlew :space-sdk:exportDebugSwiftPackage` once (and
+after SDK changes), then open `sdkSampleIos/SdkSample.xcodeproj` and run the
+`SdkSample` scheme. The project adds `space-sdk/SwiftPackage/Debug` as a local
+package (product `SpaceSdkLibrary`). If Xcode shows stale SDK code, use
+**File ▸ Packages ▸ Reset Package Caches**.
 
-### Swift export limitations (Kotlin 2.4)
+To update the Spaceflight News API, re-download its spec
+(`https://api.spaceflightnewsapi.net/v4/schema/?format=json`) into
+`space-api/openapi/` and rebuild; the compiler then points at any code that
+needs changing.
 
-- **iOS 18 minimum.** The generated coroutine support uses Swift's `Mutex`, so
-  `async` and `Flow` interop require iOS 18.
-- **The app has to build the SDK itself.** The only supported setup is direct
-  integration: the app's Xcode project runs Gradle (`embedSwiftExportForXcode`).
-  There's no supported way yet to ship a prebuilt XCFramework or Swift package
-  to other teams. Gradle does generate an SPM package internally
-  (`sdk/build/SPMPackage/`), and Kotlin 2.5 reworks the export DSL with
-  publishing in mind.
-- **Apple Silicon simulators only.** The sample excludes `x86_64` for the
-  simulator.
-- **Alpha.** Expect breaking changes. Generic types are erased, and types that
-  inherit from `List`, `Set` or `Map` aren't exported.
+### Limitations
+
+- **Preview toolchain.** Kotlin 2.5.0-RC and Compose 1.13.0-rc01 are release
+  candidates; Swift export is Beta and its Gradle DSL is marked experimental.
+- **iOS 18 minimum** for the Swift package: Swift export's coroutine support
+  uses Swift's `Mutex`.
+- **Distribution by URL isn't documented yet.** The exported package works as
+  a local package; shipping it to other teams (e.g. a release or a separate
+  repo) is the next experiment.
+- **Apple Silicon simulators only** (`x86_64` is excluded).
+- **In-memory cache.** Data is cached for the app's lifetime; swap in
+  SQLDelight or Room KMP for persistence across launches.
+- **Generator bug** (OpenAPI Generator 7.27.0, `multiplatform`): an optional
+  array request body generates code that doesn't compile. Our specs are
+  read-only GETs, so they're not affected.
+- **Simulator unit tests can't reach the network** on this machine (the apps
+  can), which is one more reason the tests use recorded responses.
 
 ## Known limitations
 
@@ -407,9 +422,6 @@ network failure).
   regenerate the Xcode project.
 - **No Intel-Mac iOS simulator.** Compose Multiplatform 1.12 no longer publishes
   `iosX64`, so the target was removed. Use an Apple Silicon Mac or a real device.
-- **Kotlin plugin warning about Gradle 10.** Kotlin 2.4.x triggers a Gradle 10
-  incompatibility warning (`KotlinNativeBundleArtifactsTypes`). It is fixed in
-  Kotlin 2.5.0.
 - **SPM caches binary targets aggressively.** If Xcode seems to run stale Kotlin
   code, use **File ▸ Packages ▸ Reset Package Caches**.
 - **Framework size.** A debug Compose iOS framework is large (tens of MB). Release

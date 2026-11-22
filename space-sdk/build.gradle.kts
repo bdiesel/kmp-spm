@@ -63,6 +63,10 @@ kotlin {
             // (Flow) are exported. As `api`, Swift export would bridge all of
             // kotlinx-coroutines as its own Swift module (and fails to compile it in 2.5.0-RC).
             implementation(libs.kotlinx.coroutines.core)
+            // OpenAPI-generated clients. `implementation`, so Swift export and Android
+            // consumers never see generated or Ktor types; the data layer maps them.
+            implementation(project(":space-api"))
+            implementation(libs.kotlinx.datetime)
         }
         androidMain.dependencies {
             // Android apps see Flow in our public API, so they need coroutines on their classpath.
@@ -71,6 +75,7 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
     }
 }
