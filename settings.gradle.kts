@@ -32,4 +32,4 @@ dependencyResolutionManagement {
 
 include(":composeApp")
 include(":androidApp")
-include(":sdk")
+include(":space-sdk")

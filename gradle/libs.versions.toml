@@ -1,11 +1,13 @@
 [versions]
-kotlin = "2.4.21"
-compose = "1.12.2"
-compose-material3 = "1.9.0"
+kotlin = "2.5.0-RC"
+compose = "1.13.0-rc01"
+compose-material3 = "1.13.0-rc01"
 agp = "9.5.2"
 androidx-activity-compose = "1.13.0"
 kotlinx-coroutines = "1.11.0"
 android-compileSdk = "37"
+# Minor SDK release (37.2). Compose 1.13 requires compileSdk 37.1+.
+android-compileSdkMinor = "2"
 android-minSdk = "24"
 android-targetSdk = "37"
 

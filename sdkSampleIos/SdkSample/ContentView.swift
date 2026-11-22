@@ -1,5 +1,5 @@
 import SwiftUI
-import KmpSdk
+import SpaceSdk
 
 /// UI layer: renders the SDK's state and sends events back (unidirectional data flow).
 /// All logic lives in the shared `UserLookupStateHolder`.
@@ -16,7 +16,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("KmpSdk via Swift export").font(.headline)
+            Text("SpaceSdk (prebuilt Swift package)").font(.headline)
 
             TextField("User id", text: $userId)
                 .textFieldStyle(.roundedBorder)

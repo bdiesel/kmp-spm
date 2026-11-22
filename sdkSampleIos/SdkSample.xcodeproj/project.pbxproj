@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7B2E00000000000000000101 /* SpaceSdkLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 7B2E00000000000000000301 /* SpaceSdkLibrary */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		7B2E00000000000000000201 /* SdkSample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SdkSample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7B2E00000000000000000101 /* SpaceSdkLibrary in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -52,7 +57,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 7B2E00000000000000000902 /* Build configuration list for PBXNativeTarget "SdkSample" */;
 			buildPhases = (
-				7B2E00000000000000000504 /* Build KmpSdk (Swift export) */,
 				7B2E00000000000000000501 /* Sources */,
 				7B2E00000000000000000502 /* Frameworks */,
 				7B2E00000000000000000503 /* Resources */,
@@ -65,6 +69,9 @@
 				7B2E00000000000000000401 /* SdkSample */,
 			);
 			name = SdkSample;
+			packageProductDependencies = (
+				7B2E00000000000000000301 /* SpaceSdkLibrary */,
+			);
 			productName = SdkSample;
 			productReference = 7B2E00000000000000000201 /* SdkSample.app */;
 			productType = "com.apple.product-type.application";
@@ -93,6 +100,9 @@
 			);
 			mainGroup = 7B2E00000000000000000601;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7B2E00000000000000000302 /* XCLocalSwiftPackageReference "../space-sdk/SwiftPackage/Debug" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7B2E00000000000000000602 /* Products */;
 			projectDirPath = "";
@@ -112,28 +122,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		7B2E00000000000000000504 /* Build KmpSdk (Swift export) */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Build KmpSdk (Swift export)";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/zsh;
-			shellScript = "# Direct integration: Gradle compiles :sdk and drops the generated Swift\n# module + static library into this build's products directory.\ncd \"${SRCROOT}/..\"\nif [ -z \"${JAVA_HOME}\" ]; then\n  export JAVA_HOME=\"$(/usr/libexec/java_home 2>/dev/null)\"\nfi\n./gradlew :sdk:embedSwiftExportForXcode\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7B2E00000000000000000501 /* Sources */ = {
@@ -264,6 +252,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7B2E00000000000000000302 /* XCLocalSwiftPackageReference "../space-sdk/SwiftPackage/Debug" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../space-sdk/SwiftPackage/Debug";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7B2E00000000000000000301 /* SpaceSdkLibrary */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SpaceSdkLibrary;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 7B2E00000000000000000001 /* Project object */;
 }
