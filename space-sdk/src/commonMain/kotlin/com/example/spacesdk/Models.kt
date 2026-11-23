@@ -1,9 +1,19 @@
+@file:OptIn(ExperimentalJsExport::class)
+
 package com.example.spacesdk
 
+import kotlin.js.ExperimentalJsExport
+import kotlin.js.JsExport
+
+// @JsExport only affects the JavaScript build (TypeScript definitions);
+// Android and Swift see these types exactly as before.
+
 /** What an Astronomy Picture of the Day entry shows. */
+@JsExport
 public enum class MediaType { IMAGE, VIDEO, OTHER }
 
 /** NASA's Astronomy Picture of the Day. Text fields are plain text. */
+@JsExport
 public data class PictureOfTheDay(
     /** Publication date as `YYYY-MM-DD`. */
     val date: String,
@@ -24,6 +34,7 @@ public data class PictureOfTheDay(
 )
 
 /** A spaceflight news article. */
+@JsExport
 public data class NewsArticle(
     val id: Int,
     val title: String,
@@ -37,6 +48,7 @@ public data class NewsArticle(
 )
 
 /** Why a request failed. */
+@JsExport
 public enum class SpaceError {
     /** The service couldn't be reached (offline, timeout, DNS…). */
     NETWORK,
@@ -52,12 +64,16 @@ public enum class SpaceError {
 }
 
 /** Result of a picture-of-the-day request. */
+@JsExport
 public sealed class PictureResult {
     public data class Success(val picture: PictureOfTheDay) : PictureResult()
     public data class Failure(val error: SpaceError) : PictureResult()
 }
 
-/** Result of a news request. */
+/**
+ * Result of a news request. (JavaScript gets its own `NewsResult` with a plain
+ * array of articles; see the web package.)
+ */
 public sealed class NewsResult {
     public data class Success(val articles: List<NewsArticle>) : NewsResult()
     public data class Failure(val error: SpaceError) : NewsResult()

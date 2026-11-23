@@ -1,8 +1,8 @@
 # kmp-spm · SpaceSdk
 
 An experiment in building **one Kotlin Multiplatform SDK that native apps on
-Android and iOS can consume**, from OpenAPI specs to a published package, with
-sample apps on top to demonstrate it.
+Android, iOS and the web can consume**, from OpenAPI specs to a published
+package, with sample apps on top to demonstrate it.
 
 ## What this project does
 
@@ -27,6 +27,8 @@ The pipeline:
    - **Android:** a regular Kotlin library.
    - **iOS:** a prebuilt Swift package (Kotlin's Swift export), so Swift code
      gets `async` functions, `AsyncSequence` streams and exhaustive enums.
+   - **Web:** an npm package (Kotlin/JS, ES modules) with TypeScript
+     definitions, so TypeScript code gets Promises, arrays and typed results.
 5. **Separate sample apps** (`samples/`) consume the *published* packages, like
    any outside app, and put a thin UI on top to demonstrate the SDK.
 
@@ -39,6 +41,7 @@ only as a published package:
 | --- | --- | --- | --- |
 | **Android** | `samples/android/` (standalone Gradle build) | GitHub Packages: `io.github.bdiesel.spacesdk:space-sdk:0.2.0` | `ViewModel` + Compose screen |
 | **iOS** | `samples/ios/` (standalone Xcode project) | Swift package `https://github.com/bdiesel/SpaceSdk-swift` 0.2.0 | `@Observable` model + SwiftUI view |
+| **Web** | `samples/web/` (Vite + plain TypeScript, no framework) | GitHub Packages npm: `@bdiesel/space-sdk@0.2.0` | view model class + DOM view |
 
 Each screen has a **thin view model** that calls the SDK's use cases and a
 **view** that renders it. The SDK holds no screen state; each app owns its UX.
@@ -53,6 +56,7 @@ The same SDK, rendered by each platform's own UI toolkit:
 | --- | --- | --- |
 | **Android** (Jetpack Compose) | <img src="docs/screenshots/android-picture.png" width="240" alt="Android: Picture of the Day"> | <img src="docs/screenshots/android-news.png" width="240" alt="Android: Space News"> |
 | **iOS** (SwiftUI) | <img src="docs/screenshots/ios-picture.png" width="240" alt="iOS: Picture of the Day"> | <img src="docs/screenshots/ios-news.png" width="240" alt="iOS: Space News"> |
+| **Web** (TypeScript + DOM) | <img src="docs/screenshots/web-picture.png" width="240" alt="Web: Picture of the Day"> | <img src="docs/screenshots/web-news.png" width="240" alt="Web: Space News"> |
 
 See [SpaceSdk](#spacesdk) for the API, layers and build steps.
 
@@ -149,7 +153,8 @@ sequenceDiagram
 ├── space-sdk/                        # SpaceSdk: use cases + internal data layer
 ├── samples/                          # Standalone apps that consume the published SDK
 │   ├── android/                      #   own Gradle build: ViewModels + Compose
-│   └── ios/                          #   own Xcode project: @Observable models + SwiftUI
+│   ├── ios/                          #   own Xcode project: @Observable models + SwiftUI
+│   └── web/                          #   own npm project: TypeScript view models + DOM views
 ├── iosApp/
 │   ├── iosApp/                       # SwiftUI shell that hosts the Compose view + Info.plist
 │   └── iosApp.xcodeproj              # Xcode project with the iosApp scheme
@@ -327,6 +332,10 @@ How apps get it:
   (Beta in Kotlin 2.5). Apps add it like any package and `import SpaceSdk`; no
   Gradle runs in the app's build. `suspend` → `async`, `Flow` →
   `AsyncSequence`, sealed classes → Swift enums.
+- **Web:** an **npm package** compiled by Kotlin/JS (ES modules, with
+  generated `.d.mts` TypeScript definitions). A small JS-only facade
+  (`space-sdk/src/jsMain`) turns `suspend` functions into Promises and lists
+  into arrays; the use cases behind it are the same shared code.
 
 ### Public API: use cases
 
@@ -438,12 +447,36 @@ In the sample, each screen's `ViewModel` calls these from `viewModelScope` and
 exposes its own `StateFlow` to a Compose screen (`PictureOfTheDayViewModel`,
 `NewsViewModel`).
 
+### Using it from TypeScript (web)
+
+```ts
+import { SpaceSdk, PictureResult, NewsResult } from "@bdiesel/space-sdk";
+
+const sdk = new SpaceSdk();                                   // one per app
+const result = await sdk.pictureOfTheDay.forDate(2014, 9, 18); // never rejects
+if (result instanceof PictureResult.Success) {
+  console.log(result.picture.title);
+} else if (result instanceof PictureResult.Failure) {
+  console.log(result.error.name);                             // "NETWORK", "NOT_FOUND", …
+}
+
+const news = await sdk.news.latest(20);
+if (news instanceof NewsResult.Success) news.articles.map((a) => a.title); // a real Array
+```
+
+Both APIs allow cross-origin requests, so the SDK works straight from the
+browser with no proxy. In the sample, each screen has a view model class with a
+tiny observable store and a view that renders it with DOM APIs
+(`pictureOfTheDayViewModel.ts`, `newsViewModel.ts`).
+
 ### Building and testing
 
 ```sh
 ./gradlew :space-api:iosSimulatorArm64Test    # generated clients vs recorded real responses
 ./gradlew :space-sdk:iosSimulatorArm64Test    # use cases, repositories, mapping (23 tests)
 ./gradlew :space-sdk:exportDebugSwiftPackage  # -> space-sdk/SwiftPackage/Debug
+./gradlew :space-sdk:allTests                 # also runs the tests in Node and a headless browser
+./gradlew :space-sdk:jsBrowserProductionLibraryDistribution  # npm package contents
 ```
 
 Tests run offline: the generated clients are fed recorded real responses
@@ -472,6 +505,17 @@ tooling (Kotlin 2.4.21, Compose BOM 2026.11.01).
 token needed. To try unreleased SDK changes, run
 `./gradlew :space-sdk:exportDebugSwiftPackage` and point the package
 dependency at the local folder `space-sdk/SwiftPackage/Debug`.
+
+**Web** (`samples/web`): GitHub Packages needs a token for npm too.
+`samples/web/.npmrc` points the `@bdiesel` scope at GitHub Packages and reads
+the token from `NODE_AUTH_TOKEN`, so no token is stored in the repo:
+
+```sh
+cd samples/web
+NODE_AUTH_TOKEN=$(gh auth token) npm install
+npm run dev        # http://localhost:5173
+npm run build      # type-check + production bundle in dist/
+```
 
 ## Installing SpaceSdk
 
@@ -508,6 +552,21 @@ implementation("io.github.bdiesel.spacesdk:space-sdk:0.2.0")
 
 GitHub Packages requires a token even to download public packages.
 
+### Web (npm)
+
+```sh
+# .npmrc in your project (the token comes from the environment)
+@bdiesel:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+```sh
+NODE_AUTH_TOKEN=<token with read:packages> npm install @bdiesel/space-sdk@0.2.0
+```
+
+The package is ES modules only and includes TypeScript definitions. It runs in
+browsers and in Node 18+.
+
 ## Publishing a release
 
 The version lives in `gradle.properties` (`spacesdk.version`).
@@ -536,6 +595,19 @@ GITHUB_ACTOR=bdiesel GITHUB_TOKEN=$(gh auth token) \
 ```
 
 Use `publishToMavenLocal` instead to test the artifacts locally.
+
+**Web:**
+
+```sh
+scripts/release-npm-package.sh              # -> build/npm-release/<version>/
+cd build/npm-release/<version>
+NODE_AUTH_TOKEN=$(gh auth token) npm publish   # needs write:packages
+```
+
+The script builds the production Kotlin/JS library, names it
+`@bdiesel/space-sdk`, sets the version and the GitHub Packages registry, and
+adds a README. Run `npm pack --dry-run` in the folder to see exactly what will
+be published.
 
 To update the Spaceflight News API, re-download its spec
 (`https://api.spaceflightnewsapi.net/v4/schema/?format=json`) into

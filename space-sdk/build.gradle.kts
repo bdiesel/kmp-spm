@@ -77,6 +77,17 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    // Web: an ES-module npm package with TypeScript definitions
+    // (build/dist/js/productionLibrary). jsMain adds the Promise-based facade.
+    js {
+        outputModuleName.set("space-sdk")
+        browser()
+        nodejs() // lets the common tests run headless with jsNodeTest
+        binaries.library()
+        useEsModules()
+        generateTypeScriptDefinitions()
+    }
+
     export {
         @OptIn(ExperimentalSwiftExportDsl::class)
         swift {
@@ -120,6 +131,9 @@ kotlin {
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+        jsMain.dependencies {
+            implementation(libs.ktor.client.js) // fetch() in the browser
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

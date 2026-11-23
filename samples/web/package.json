@@ -1,0 +1,19 @@
+{
+  "name": "space-sdk-sample-web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Web sample app consuming the published @bdiesel/space-sdk package",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@bdiesel/space-sdk": "0.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}

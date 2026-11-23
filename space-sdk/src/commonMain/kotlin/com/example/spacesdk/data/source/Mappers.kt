@@ -43,7 +43,8 @@ internal fun LocalDate.toApodDateCode(): String =
 
 private fun Int.pad2() = toString().padStart(2, '0')
 
-private val lineBreak = Regex("(?i)<br\\s*/?>|</p>")
+// RegexOption instead of an inline (?i) flag: JavaScript's RegExp has no inline flags.
+private val lineBreak = Regex("<br\\s*/?>|</p>", RegexOption.IGNORE_CASE)
 private val tag = Regex("<[^>]+>")
 private val numericEntity = Regex("&#(x?)([0-9a-fA-F]+);")
 private val whitespace = Regex("[ \\t\\u00A0]+")
