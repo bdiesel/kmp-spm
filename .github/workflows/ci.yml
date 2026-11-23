@@ -32,6 +32,10 @@ jobs:
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)" && xcodebuild -version
       - name: SDK tests (iOS simulator)
         run: ./gradlew :space-api:allTests :space-sdk:allTests
+      - name: Build XCFramework (first-build step from the README)
+        # SPM resolves the local Shared package before the scheme pre-action runs,
+        # so a fresh clone needs the XCFramework to exist first.
+        run: ./gradlew :composeApp:assembleSharedDebugXCFramework
       - name: Build iOS app
         # The iosApp scheme's pre-action runs Gradle to rebuild Shared.xcframework,
         # then Xcode links it through the local Swift Package.
