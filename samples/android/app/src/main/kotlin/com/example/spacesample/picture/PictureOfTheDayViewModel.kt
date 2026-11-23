@@ -1,7 +1,9 @@
-package com.example.kmpspm.space
+package com.example.spacesample.picture
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.spacesample.SpaceSdkProvider
+import com.example.spacesample.toMessage
 import com.example.spacesdk.PictureOfTheDay
 import com.example.spacesdk.PictureResult
 import com.example.spacesdk.SpaceSdk
@@ -12,14 +14,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-/** What the Picture of the Day screen shows. Owned by the app, not the SDK. */
+/** What the Picture of the Day screen shows. */
 sealed interface PictureUiState {
     data object Loading : PictureUiState
     data class Shown(val picture: PictureOfTheDay) : PictureUiState
     data class Failed(val message: String) : PictureUiState
 }
 
-/** Screen logic for Picture of the Day: calls SpaceSdk's use cases, exposes UI state. */
+/** Thin view model: calls SpaceSdk's use cases and exposes UI state. */
 class PictureOfTheDayViewModel(private val sdk: SpaceSdk = SpaceSdkProvider.sdk) : ViewModel() {
     private val _state = MutableStateFlow<PictureUiState>(PictureUiState.Loading)
     val state: StateFlow<PictureUiState> = _state.asStateFlow()

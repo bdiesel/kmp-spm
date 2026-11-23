@@ -1,4 +1,4 @@
-package com.example.kmpspm.space
+package com.example.spacesample
 
 import com.example.spacesdk.SpaceError
 import com.example.spacesdk.SpaceSdk

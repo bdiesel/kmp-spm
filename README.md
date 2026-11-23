@@ -27,17 +27,23 @@ The pipeline:
    - **Android:** a regular Kotlin library.
    - **iOS:** a prebuilt Swift package (Kotlin's Swift export), so Swift code
      gets `async` functions, `AsyncSequence` streams and exhaustive enums.
-5. **Sample apps** put a UI on top to demonstrate the SDK.
+5. **Separate sample apps** (`samples/`) consume the *published* packages, like
+   any outside app, and put a thin UI on top to demonstrate the SDK.
 
 ### Two ways to use the SDK
 
-1. **Native UI on each platform** (this branch): separate apps consuming the
-   same SDK. Each screen has its own **view model** that calls the SDK's use
-   cases and a **view** that renders it: an Android `ViewModel` + Jetpack
-   Compose, and an iOS `@Observable` model + SwiftUI. The SDK holds no screen
-   state; each app owns its UX.
-2. **Shared Compose Multiplatform UI** (planned): one Compose UI on top of the
-   same SDK, running on both platforms.
+Each platform gets its own small app, in its own build, that knows SpaceSdk
+only as a published package:
+
+| App | Location | Gets SpaceSdk from | Screen structure |
+| --- | --- | --- | --- |
+| **Android** | `samples/android/` (standalone Gradle build) | GitHub Packages: `io.github.bdiesel.spacesdk:space-sdk:0.2.0` | `ViewModel` + Compose screen |
+| **iOS** | `samples/ios/` (standalone Xcode project) | Swift package `https://github.com/bdiesel/SpaceSdk-swift` 0.2.0 | `@Observable` model + SwiftUI view |
+
+Each screen has a **thin view model** that calls the SDK's use cases and a
+**view** that renders it. The SDK holds no screen state; each app owns its UX.
+Neither app can see the SDK's source, so they show exactly what an outside
+developer gets.
 
 ### Screenshots
 
@@ -137,11 +143,13 @@ sequenceDiagram
 │       ├── androidMain/              # actual platform() for Android
 │       ├── iosMain/                  # MainViewController() bridge + actual platform()
 │       └── wasmJsMain/               # Browser entry point (Main.kt) + index.html
-├── androidApp/                       # Android app: SpaceSdk sample screens (Compose)
+├── androidApp/                       # Android app hosting the shared counter UI
 ├── space-api/                        # OpenAPI specs + generated Ktor clients (internal)
 │   └── openapi/                      # apod.yaml (ours), spaceflight-news.json (published)
-├── space-sdk/                        # SpaceSdk: public API, domain + data layers
-├── sdkSampleIos/                     # SwiftUI sample using SpaceSdk's prebuilt Swift package
+├── space-sdk/                        # SpaceSdk: use cases + internal data layer
+├── samples/                          # Standalone apps that consume the published SDK
+│   ├── android/                      #   own Gradle build: ViewModels + Compose
+│   └── ios/                          #   own Xcode project: @Observable models + SwiftUI
 ├── iosApp/
 │   ├── iosApp/                       # SwiftUI shell that hosts the Compose view + Info.plist
 │   └── iosApp.xcodeproj              # Xcode project with the iosApp scheme
@@ -153,9 +161,9 @@ sequenceDiagram
   provides an entry point and an `actual fun platform()`.
 - **Android:** `composeApp` is an Android library
   (`com.android.kotlin.multiplatform.library`). The separate `:androidApp`
-  module is the Android application. On this branch its `MainActivity` shows
-  the SpaceSdk sample instead of the shared counter `App()`. This two-module
-  layout is what AGP 9 requires for Kotlin Multiplatform projects.
+  module is the Android application: it depends on `:composeApp`, and its
+  `MainActivity` calls `setContent { App() }`. This two-module layout is what
+  AGP 9 requires for Kotlin Multiplatform projects.
 - **Web:** the `wasmJs` target compiles `App()` to WebAssembly and serves it from
   `index.html`.
 - **iOS through SPM:** the app links the Kotlin code as a prebuilt binary package:
@@ -199,7 +207,7 @@ Gradle or a specific JDK: the wrapper and the daemon toolchain settings
 ```
 
 Or open the project in Android Studio and run the `androidApp` configuration.
-On this branch the app is the SpaceSdk sample (needs internet).
+(The SpaceSdk samples live in `samples/`; see [SpaceSdk](#spacesdk).)
 
 ### Web (Wasm)
 
@@ -436,22 +444,34 @@ exposes its own `StateFlow` to a Compose screen (`PictureOfTheDayViewModel`,
 ./gradlew :space-api:iosSimulatorArm64Test    # generated clients vs recorded real responses
 ./gradlew :space-sdk:iosSimulatorArm64Test    # use cases, repositories, mapping (23 tests)
 ./gradlew :space-sdk:exportDebugSwiftPackage  # -> space-sdk/SwiftPackage/Debug
-./gradlew :androidApp:installDebug            # Android sample
 ```
 
 Tests run offline: the generated clients are fed recorded real responses
 through Ktor's `MockEngine`.
 
-**iOS sample:** open `sdkSampleIos/SdkSample.xcodeproj` and run the
-`SdkSample` scheme. It installs the **published** package
-(`https://github.com/bdiesel/SpaceSdk-swift`, 0.2.0), like any outside app.
-To try unreleased SDK changes, run `./gradlew :space-sdk:exportDebugSwiftPackage`
-and switch the project's package dependency to the local folder
-`space-sdk/SwiftPackage/Debug` (File ▸ Packages, or edit the reference).
+### Running the sample apps
 
-**Android sample:** builds against the SDK source by default. Add
-`-Pspacesdk.usePublished=true` to use the published artifact instead (Maven
-Local first, then GitHub Packages).
+The samples are separate projects that use the **published** SDK, so they
+build without this repo's Gradle build.
+
+**Android** (`samples/android`): GitHub Packages needs a token with
+`read:packages`, even for public packages. Put it in
+`~/.gradle/gradle.properties` (`gpr.user=<github user>`, `gpr.key=<token>`) or
+the environment, then:
+
+```sh
+cd samples/android
+GITHUB_ACTOR=<github user> GITHUB_TOKEN=$(gh auth token) ./gradlew :app:installDebug
+```
+
+Or open `samples/android` in Android Studio as its own project. It uses stable
+tooling (Kotlin 2.4.21, Compose BOM 2026.11.01).
+
+**iOS** (`samples/ios`): open `samples/ios/SdkSample.xcodeproj` and run the
+`SdkSample` scheme. Xcode downloads `SpaceSdk-swift` 0.2.0 from GitHub; no
+token needed. To try unreleased SDK changes, run
+`./gradlew :space-sdk:exportDebugSwiftPackage` and point the package
+dependency at the local folder `space-sdk/SwiftPackage/Debug`.
 
 ## Installing SpaceSdk
 
