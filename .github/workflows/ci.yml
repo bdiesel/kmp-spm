@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  android-web:
+    name: Android + Web (Wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build Android app and Wasm distribution
+        run: ./gradlew :androidApp:assembleDebug :composeApp:wasmJsBrowserDistribution
+
+  ios:
+    name: iOS (Gradle → XCFramework → SPM → Xcode)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)" && xcodebuild -version
+      - name: SDK tests (iOS simulator)
+        run: ./gradlew :space-api:allTests :space-sdk:allTests
+      - name: Build iOS app
+        # The iosApp scheme's pre-action runs Gradle to rebuild Shared.xcframework,
+        # then Xcode links it through the local Swift Package.
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
