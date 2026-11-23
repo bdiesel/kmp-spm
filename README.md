@@ -442,11 +442,12 @@ exposes its own `StateFlow` to a Compose screen (`PictureOfTheDayViewModel`,
 Tests run offline: the generated clients are fed recorded real responses
 through Ktor's `MockEngine`.
 
-**iOS sample:** run `./gradlew :space-sdk:exportDebugSwiftPackage`, then open
-`sdkSampleIos/SdkSample.xcodeproj` and run the `SdkSample` scheme. While the
-use-case API is unreleased, the sample uses the locally exported package
-(`space-sdk/SwiftPackage/Debug`); after the next release it switches back to
-`https://github.com/bdiesel/SpaceSdk-swift`, like any outside app.
+**iOS sample:** open `sdkSampleIos/SdkSample.xcodeproj` and run the
+`SdkSample` scheme. It installs the **published** package
+(`https://github.com/bdiesel/SpaceSdk-swift`, 0.2.0), like any outside app.
+To try unreleased SDK changes, run `./gradlew :space-sdk:exportDebugSwiftPackage`
+and switch the project's package dependency to the local folder
+`space-sdk/SwiftPackage/Debug` (File ▸ Packages, or edit the reference).
 
 **Android sample:** builds against the SDK source by default. Add
 `-Pspacesdk.usePublished=true` to use the published artifact instead (Maven
@@ -457,11 +458,11 @@ Local first, then GitHub Packages).
 ### iOS (Swift Package Manager)
 
 In Xcode: **File ▸ Add Package Dependencies…** →
-`https://github.com/bdiesel/SpaceSdk-swift` → version `0.1.0` → product
+`https://github.com/bdiesel/SpaceSdk-swift` → version `0.2.0` → product
 **SpaceSdkLibrary**. Or in a `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/bdiesel/SpaceSdk-swift", from: "0.1.0")
+.package(url: "https://github.com/bdiesel/SpaceSdk-swift", from: "0.2.0")
 // target dependency: .product(name: "SpaceSdkLibrary", package: "SpaceSdk-swift")
 ```
 
@@ -482,7 +483,7 @@ repositories {
     }
 }
 // build.gradle.kts
-implementation("io.github.bdiesel.spacesdk:space-sdk:0.1.0")
+implementation("io.github.bdiesel.spacesdk:space-sdk:0.2.0")
 ```
 
 GitHub Packages requires a token even to download public packages.
@@ -510,8 +511,8 @@ the checksum must come from the same script run.
 ```sh
 # needs a token with write:packages: gh auth refresh -s write:packages,read:packages
 GITHUB_ACTOR=bdiesel GITHUB_TOKEN=$(gh auth token) \
-  ./gradlew :space-api:publishAllPublicationsToGitHubPackagesRepository \
-            :space-sdk:publishAllPublicationsToGitHubPackagesRepository
+  ./gradlew :space-sdk:publishAllPublicationsToGitHubPackagesRepository
+# one artifact: the generated client is compiled into space-sdk
 ```
 
 Use `publishToMavenLocal` instead to test the artifacts locally.

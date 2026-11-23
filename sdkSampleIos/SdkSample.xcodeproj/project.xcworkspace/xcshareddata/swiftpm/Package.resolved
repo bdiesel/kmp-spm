@@ -1,0 +1,15 @@
+{
+  "originHash" : "ff2c96af793efeb973da3714db4c98eb2ceb6601d1292f8b466c720ae3e1f20f",
+  "pins" : [
+    {
+      "identity" : "spacesdk-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/bdiesel/SpaceSdk-swift",
+      "state" : {
+        "revision" : "937878ea66bc7bb1fc31ee64816c4fbe60819b2d",
+        "version" : "0.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}
