@@ -39,6 +39,7 @@ CHECKSUM="$(swift package compute-checksum "$OUT/$BINARY.xcframework.zip")"
 
 echo "==> Writing package sources"
 cp -R "$SRC/Sources" "$OUT/package/Sources"
+cp LICENSE "$OUT/package/LICENSE"
 # Replace the local binary target with a remote one (URL + checksum).
 awk -v name="$BINARY" -v url="$URL" -v sum="$CHECKSUM" '
   $0 ~ "name: \"" name "\"," && prev ~ /\.binaryTarget\(/ { print; getline; print "            url: \"" url "\","; print "            checksum: \"" sum "\""; prev=""; next }
