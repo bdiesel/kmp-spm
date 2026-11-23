@@ -3,32 +3,16 @@ import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
 
 // :space-api — HTTP clients generated from OpenAPI specs in ./openapi.
 // Kotlin Multiplatform (Android + iOS) using Ktor and kotlinx.serialization.
-// Consumed by :space-sdk as an `implementation` dependency, so generated
-// types never appear in the SDK's public (Swift/Kotlin) API.
+//
+// Not published on its own. :space-sdk compiles these generated sources into
+// its own artifact (see the `openApiSources` configuration below), so SpaceSdk
+// ships as ONE package. This module still compiles them too, to run the
+// generated-client tests in isolation.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.openapi.generator)
-    `maven-publish`
-}
-
-// Published alongside :space-sdk (it's a runtime dependency of the SDK), but
-// not meant to be used directly.
-group = providers.gradleProperty("spacesdk.group").get()
-version = providers.gradleProperty("spacesdk.version").get()
-
-publishing {
-    repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/${providers.gradleProperty("spacesdk.githubRepo").get()}")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
-                password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
-            }
-        }
-    }
 }
 
 /** One generated client per spec. Output goes to build/generated/openapi/<name>. */
@@ -49,8 +33,27 @@ fun registerClient(name: String, spec: String, pkg: String) =
             mapOf(
                 "dateLibrary" to "kotlinx-datetime",
                 "omitGradleWrapper" to "true",
+                // Generated classes are `internal`: hidden from SDK consumers at
+                // the language level, not just by dependency scope.
+                "nonPublicApi" to "true",
             ),
         )
+        // Start from an empty folder, so files from earlier runs (e.g. a renamed
+        // API class) don't linger and get compiled.
+        cleanupOutput.set(true)
+        // A few multiplatform templates (auth/*, Base64ByteArray, OctetByteArray)
+        // ignore nonPublicApi; make every remaining top-level declaration internal.
+        doLast {
+            val topLevel = Regex(
+                "^(?=(?:open |data |sealed |abstract |enum |inline |value )*(?:class|interface|object|fun|val|var|typealias) )",
+                RegexOption.MULTILINE,
+            )
+            File(outputDir.get().toString()).walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+                val text = file.readText()
+                val fixed = text.replace(topLevel, "internal ")
+                if (fixed != text) file.writeText(fixed)
+            }
+        }
     }
 
 // Our own spec, written from NASA's APOD feed guide (NASA publishes none).
@@ -62,10 +65,29 @@ val spaceflightNews = registerClient(
     "spaceflightNews", "spaceflight-news.json", "com.example.spaceapi.spaceflightnews",
 )
 
+val clients = listOf(apod, spaceflightNews)
+fun GenerateTask.kotlinSources(): File = File("${outputDir.get()}/src/commonMain/kotlin")
+
 // AGP derives sibling folders (e.g. baselineProfiles) from each source dir and
 // reads them without inheriting the dependency on the generators; declare it.
 tasks.matching { it.name.endsWith("ArtProfile") }.configureEach {
-    dependsOn(apod, spaceflightNews)
+    dependsOn(clients)
+}
+
+// Hands the generated source folders to :space-sdk (Gradle's supported way to
+// share task outputs between projects; the folders carry their task dependency).
+val openApiSources = configurations.create("openApiSources") {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named("openapi-generated-sources"))
+    }
+}
+clients.forEach { client ->
+    artifacts.add(openApiSources.name, client.map { it.kotlinSources() }) {
+        type = "directory"
+        builtBy(client)
+    }
 }
 
 kotlin {
@@ -89,11 +111,9 @@ kotlin {
     sourceSets {
         commonMain {
             // Generated sources; the map {} also makes compilation depend on generation.
-            listOf(apod, spaceflightNews).forEach { client ->
-                kotlin.srcDir(client.map { "${it.outputDir.get()}/src/commonMain/kotlin" })
-            }
+            clients.forEach { client -> kotlin.srcDir(client.map { it.kotlinSources() }) }
             dependencies {
-                api(libs.ktor.client.core)
+                implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
                 implementation(libs.kotlinx.serialization.json)

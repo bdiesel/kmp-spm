@@ -11,6 +11,9 @@ import kotlinx.datetime.LocalDate
 
 internal fun Apod.toPictureOfTheDay() = PictureOfTheDay(
     date = date.toString(),
+    year = date.year,
+    month = date.month.ordinal + 1,
+    day = date.day,
     title = title.htmlToPlainText(),
     explanation = explanation.htmlToPlainText().removePrefix("Explanation:").trim(),
     mediaType = when (mediaType.lowercase()) {

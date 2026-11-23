@@ -1,51 +1,64 @@
 package com.example.spacesdk
 
-/** What an APOD entry shows. A plain enum, so Swift gets a native enum. */
+/** What an Astronomy Picture of the Day entry shows. */
 public enum class MediaType { IMAGE, VIDEO, OTHER }
 
-/**
- * NASA's Astronomy Picture of the Day.
- *
- * Text fields are plain text (the SDK strips the HTML the API returns).
- * Dates are ISO-8601 strings (`2026-11-22`) so the type crosses into Swift
- * without exporting a date library.
- */
+/** NASA's Astronomy Picture of the Day. Text fields are plain text. */
 public data class PictureOfTheDay(
+    /** Publication date as `YYYY-MM-DD`. */
     val date: String,
+    val year: Int,
+    val month: Int,
+    val day: Int,
     val title: String,
     val explanation: String,
     val mediaType: MediaType,
-    /** Full-size image, or null when the entry has none. */
+    /** Full-size image, or null when the entry has none (e.g. a video). */
     val imageUrl: String?,
-    /** The APOD web page for this entry. */
+    /** The entry's page on nasa.gov. */
     val pageUrl: String,
-    /** Image credit, may be empty. */
+    /** Image credit; may be empty. */
     val credit: String,
-    /** Accessibility description, may be empty. */
+    /** Accessibility description; may be empty. */
     val altText: String,
 )
 
-/** A spaceflight news article from the Spaceflight News API. */
+/** A spaceflight news article. */
 public data class NewsArticle(
     val id: Int,
     val title: String,
     val summary: String,
     val url: String,
     val imageUrl: String?,
+    /** Publisher, e.g. "NASA" or "Spaceflight Now". */
     val newsSite: String,
     /** ISO-8601 timestamp, e.g. `2026-11-22T05:05:00Z`. */
     val publishedAt: String,
 )
 
-/** Outcome of a picture-of-the-day request. Errors are values, never exceptions. */
-public sealed class PictureOfTheDayResult {
-    public data class Success(val picture: PictureOfTheDay) : PictureOfTheDayResult()
-    public data class NotFound(val date: String) : PictureOfTheDayResult()
-    public data class Failure(val message: String) : PictureOfTheDayResult()
+/** Why a request failed. */
+public enum class SpaceError {
+    /** The service couldn't be reached (offline, timeout, DNS…). */
+    NETWORK,
+
+    /** The service answered with an error. */
+    SERVER,
+
+    /** There's no picture for the requested date. */
+    NOT_FOUND,
+
+    /** The date doesn't exist or is before the first picture (1995-06-16). */
+    INVALID_DATE,
 }
 
-/** Outcome of a news request. Errors are values, never exceptions. */
+/** Result of a picture-of-the-day request. */
+public sealed class PictureResult {
+    public data class Success(val picture: PictureOfTheDay) : PictureResult()
+    public data class Failure(val error: SpaceError) : PictureResult()
+}
+
+/** Result of a news request. */
 public sealed class NewsResult {
     public data class Success(val articles: List<NewsArticle>) : NewsResult()
-    public data class Failure(val message: String) : NewsResult()
+    public data class Failure(val error: SpaceError) : NewsResult()
 }

@@ -8,6 +8,9 @@ import kotlinx.datetime.LocalDate
 
 internal fun picture(date: String, title: String = "Picture $date") = PictureOfTheDay(
     date = date,
+    year = date.substring(0, 4).toInt(),
+    month = date.substring(5, 7).toInt(),
+    day = date.substring(8, 10).toInt(),
     title = title,
     explanation = "Explanation",
     mediaType = MediaType.IMAGE,

@@ -41,20 +41,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.example.spacesdk.MediaType
-import com.example.spacesdk.NewsArticle
-import com.example.spacesdk.NewsStateHolder
-import com.example.spacesdk.NewsUiState
 import com.example.spacesdk.PictureOfTheDay
-import com.example.spacesdk.PictureOfTheDayStateHolder
-import com.example.spacesdk.PictureOfTheDayUiState
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
-/** UI layer only: renders SpaceSdk state and sends events back (unidirectional data flow). */
+/** App shell: two tabs, each a view rendering its own ViewModel's state. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpaceApp(viewModel: SpaceViewModel = viewModel()) {
+fun SpaceApp() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     MaterialTheme {
         Scaffold(
@@ -67,32 +59,30 @@ fun SpaceApp(viewModel: SpaceViewModel = viewModel()) {
             },
         ) { padding ->
             Box(Modifier.padding(padding)) {
-                if (tab == 0) PictureScreen(viewModel.picture) else NewsScreen(viewModel.news)
+                if (tab == 0) PictureOfTheDayScreen() else NewsScreen()
             }
         }
     }
 }
 
+/** View: renders [PictureOfTheDayViewModel.state] and forwards user actions. */
 @Composable
-private fun PictureScreen(holder: PictureOfTheDayStateHolder) {
-    val state by holder.state.collectAsStateWithLifecycle(holder.currentState)
+fun PictureOfTheDayScreen(viewModel: PictureOfTheDayViewModel = viewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        val shownDate = (state as? PictureOfTheDayUiState.Success)?.picture?.date
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = shownDate != null, onClick = { shownDate?.let { holder.load(it.plusDays(-1)) } }) {
+            OutlinedButton(enabled = state is PictureUiState.Shown, onClick = viewModel::showPreviousDay) {
                 Text("◀ Previous day")
             }
-            Button(onClick = { holder.loadLatest() }) { Text("Latest") }
+            Button(onClick = viewModel::showLatest) { Text("Latest") }
         }
-        // Kotlin sealed class: `when` is exhaustive, so a new state can't be forgotten.
         when (val s = state) {
-            PictureOfTheDayUiState.Loading -> Loading()
-            is PictureOfTheDayUiState.Success -> PictureDetail(s.picture)
-            is PictureOfTheDayUiState.NotFound -> Message("There's no APOD for ${s.date}.")
-            is PictureOfTheDayUiState.Error -> Message(s.message)
+            PictureUiState.Loading -> Loading()
+            is PictureUiState.Shown -> PictureDetail(s.picture)
+            is PictureUiState.Failed -> Message(s.message)
         }
     }
 }
@@ -118,20 +108,21 @@ private fun PictureDetail(picture: PictureOfTheDay) {
     }
 }
 
+/** View: renders [NewsViewModel.state] and forwards user actions. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NewsScreen(holder: NewsStateHolder) {
-    val state by holder.state.collectAsStateWithLifecycle(holder.currentState)
+fun NewsScreen(viewModel: NewsViewModel = viewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
-    when (val s = state) {
-        NewsUiState.Loading -> Loading()
-        is NewsUiState.Error -> Column(Modifier.padding(16.dp)) {
-            Message(s.message)
-            Button(onClick = { holder.refresh() }) { Text("Retry") }
+    when {
+        state.articles.isEmpty() && state.isLoading -> Loading()
+        state.articles.isEmpty() && state.error != null -> Column(Modifier.padding(16.dp)) {
+            Message(state.error!!)
+            Button(onClick = viewModel::refresh) { Text("Retry") }
         }
-        is NewsUiState.Success -> PullToRefreshBox(isRefreshing = false, onRefresh = { holder.refresh() }) {
+        else -> PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = viewModel::refresh) {
             LazyColumn(Modifier.fillMaxSize()) {
-                items(s.articles, key = NewsArticle::id) { article ->
+                items(state.articles, key = { it.id }) { article ->
                     ListItem(
                         supportingContent = { Text("${article.newsSite} · ${article.publishedAt.take(10)}") },
                         modifier = Modifier.clickable { uriHandler.openUri(article.url) },
@@ -153,14 +144,4 @@ private fun Loading() {
 @Composable
 private fun Message(text: String) {
     Text(text, Modifier.padding(vertical = 16.dp), style = MaterialTheme.typography.bodyLarge)
-}
-
-/** "2026-11-22".plusDays(-1) == "2026-11-21". java.util APIs keep minSdk 24 without desugaring. */
-private fun String.plusDays(days: Int): String {
-    val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    val calendar = Calendar.getInstance().apply {
-        time = format.parse(this@plusDays)!!
-        add(Calendar.DAY_OF_MONTH, days)
-    }
-    return format.format(calendar.time)
 }

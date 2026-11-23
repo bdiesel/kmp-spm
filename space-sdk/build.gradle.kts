@@ -15,7 +15,27 @@ import org.jetbrains.kotlin.gradle.swiftexport.ExperimentalSwiftExportDsl
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(libs.plugins.kotlin.serialization) // the generated models are @Serializable
     `maven-publish`
+}
+
+// The OpenAPI-generated clients from :space-api are compiled INTO this module,
+// so SpaceSdk publishes as one artifact. They are generated as `internal`.
+val openApiSources = configurations.create("openApiSources") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named("openapi-generated-sources"))
+    }
+}
+dependencies {
+    openApiSources(project(":space-api"))
+}
+
+// AGP derives sibling folders (e.g. baselineProfiles) from each source dir;
+// make those tasks wait for the generated sources too.
+tasks.matching { it.name.endsWith("ArtProfile") }.configureEach {
+    dependsOn(openApiSources)
 }
 
 group = providers.gradleProperty("spacesdk.group").get()
@@ -76,19 +96,30 @@ kotlin {
     }
 
     sourceSets {
-        commonMain.dependencies {
-            // `implementation` for Swift export: only the coroutine types our API uses
-            // (Flow) are exported. As `api`, Swift export would bridge all of
-            // kotlinx-coroutines as its own Swift module (and fails to compile it in 2.5.0-RC).
-            implementation(libs.kotlinx.coroutines.core)
-            // OpenAPI-generated clients. `implementation`, so Swift export and Android
-            // consumers never see generated or Ktor types; the data layer maps them.
-            implementation(project(":space-api"))
-            implementation(libs.kotlinx.datetime)
+        commonMain {
+            // Generated sources from :space-api (internal); the configuration
+            // carries the dependency on the generator tasks.
+            kotlin.srcDir(openApiSources)
+            dependencies {
+                // `implementation` for Swift export: only the coroutine types our API uses
+                // (Flow) are exported. As `api`, Swift export would bridge all of
+                // kotlinx-coroutines as its own Swift module (and fails to compile it in 2.5.0-RC).
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.datetime)
+                // What the generated clients need. `implementation`: never part of the API.
+                implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.content.negotiation)
+                implementation(libs.ktor.serialization.kotlinx.json)
+                implementation(libs.kotlinx.serialization.json)
+            }
         }
         androidMain.dependencies {
             // Android apps see Flow in our public API, so they need coroutines on their classpath.
             api(libs.kotlinx.coroutines.core)
+            implementation(libs.ktor.client.okhttp)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

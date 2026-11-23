@@ -101,7 +101,7 @@
 			mainGroup = 7B2E00000000000000000601;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				7B2E00000000000000000302 /* XCRemoteSwiftPackageReference "SpaceSdk-swift" */,
+				7B2E00000000000000000302 /* XCLocalSwiftPackageReference "../space-sdk/SwiftPackage/Debug" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7B2E00000000000000000602 /* Products */;
@@ -253,21 +253,16 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		7B2E00000000000000000302 /* XCRemoteSwiftPackageReference "SpaceSdk-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/bdiesel/SpaceSdk-swift";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 0.1.0;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		7B2E00000000000000000302 /* XCLocalSwiftPackageReference "../space-sdk/SwiftPackage/Debug" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../space-sdk/SwiftPackage/Debug";
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		7B2E00000000000000000301 /* SpaceSdkLibrary */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7B2E00000000000000000302 /* XCRemoteSwiftPackageReference "SpaceSdk-swift" */;
 			productName = SpaceSdkLibrary;
 		};
 /* End XCSwiftPackageProductDependency section */

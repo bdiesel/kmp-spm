@@ -1,28 +1,20 @@
 import SwiftUI
 import SpaceSdk
 
-/// UI layer only: renders the SDK's state and sends events back
-/// (unidirectional data flow). All logic lives in `PictureOfTheDayStateHolder`.
+/// View: renders `PictureOfTheDayModel.state` and forwards user actions.
 struct PictureOfTheDayView: View {
-    let holder: PictureOfTheDayStateHolder
-
-    @State private var uiState: PictureOfTheDayUiState
+    let model: PictureOfTheDayModel
     @State private var date = Date()
-
-    init(holder: PictureOfTheDayStateHolder) {
-        self.holder = holder
-        _uiState = State(initialValue: holder.currentState)
-    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        DatePicker("Date", selection: $date, in: Self.firstApod...Date(), displayedComponents: .date)
+                        DatePicker("Date", selection: $date, in: Self.firstPicture...Date(), displayedComponents: .date)
                             .labelsHidden()
                         Spacer()
-                        Button("Latest") { holder.loadLatest() }
+                        Button("Latest") { model.showLatest() }
                     }
                     content
                 }
@@ -30,40 +22,21 @@ struct PictureOfTheDayView: View {
             }
             .navigationTitle("Picture of the Day")
         }
-        // Kotlin Flow consumed as a Swift AsyncSequence; cancelled with the view.
-        .task {
-            do {
-                for try await state in holder.state.asAsyncSequence() { uiState = state }
-            } catch {
-                uiState = PictureOfTheDayUiState.Error(message: "\(error)")
-            }
-        }
-        .onChange(of: date) { _, newDate in holder.load(date: Self.isoDay.string(from: newDate)) }
+        .onChange(of: date) { _, newDate in model.show(date: newDate) }
     }
 
-    // Kotlin sealed class → Swift enum: the compiler flags any unhandled case.
     @ViewBuilder private var content: some View {
-        switch uiState.sealedType() {
+        switch model.state {
         case .loading:
             ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-        case .success(let success):
-            PictureDetail(picture: success.value.picture)
-        case .notFound(let notFound):
-            ContentUnavailableView("No picture", systemImage: "moon.zzz",
-                                   description: Text("There's no APOD for \(notFound.value.date)."))
-        case .error(let error):
-            ContentUnavailableView("Couldn't load", systemImage: "wifi.exclamationmark",
-                                   description: Text(error.value.message))
+        case .shown(let picture):
+            PictureDetail(picture: picture)
+        case .failed(let message):
+            ContentUnavailableView("Couldn't load", systemImage: "moon.zzz", description: Text(message))
         }
     }
 
-    private static let firstApod = isoDay.date(from: "1995-06-16")!
-    private static let isoDay: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
+    private static let firstPicture = DateComponents(calendar: .current, year: 1995, month: 6, day: 16).date!
 }
 
 private struct PictureDetail: View {

@@ -1,37 +1,31 @@
 import SwiftUI
 import SpaceSdk
 
-/// Latest spaceflight news, rendered from `NewsStateHolder`.
+/// View: renders `NewsModel` and forwards user actions.
 struct NewsView: View {
-    let holder: NewsStateHolder
-
-    @State private var uiState: NewsUiState
-
-    init(holder: NewsStateHolder) {
-        self.holder = holder
-        _uiState = State(initialValue: holder.currentState)
-    }
+    let model: NewsModel
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("Space News")
         }
-        .task {
-            do {
-                for try await state in holder.state.asAsyncSequence() { uiState = state }
-            } catch {
-                uiState = NewsUiState.Error(message: "\(error)")
-            }
-        }
+        .task { await model.load() }
     }
 
     @ViewBuilder private var content: some View {
-        switch uiState.sealedType() {
-        case .loading:
+        if model.articles.isEmpty, model.isLoading {
             ProgressView()
-        case .success(let success):
-            List(success.value.articles, id: \.id) { article in
+        } else if model.articles.isEmpty, let error = model.error {
+            ContentUnavailableView {
+                Label("Couldn't load", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text(error)
+            } actions: {
+                Button("Retry") { Task { await model.refresh() } }
+            }
+        } else {
+            List(model.articles, id: \.id) { article in
                 if let url = URL(string: article.url) {
                     Link(destination: url) { ArticleRow(article: article) }
                 } else {
@@ -39,15 +33,7 @@ struct NewsView: View {
                 }
             }
             .tint(.primary) // rows are links, but should read as text
-            .refreshable { holder.refresh() }
-        case .error(let error):
-            ContentUnavailableView {
-                Label("Couldn't load", systemImage: "wifi.exclamationmark")
-            } description: {
-                Text(error.value.message)
-            } actions: {
-                Button("Retry") { holder.refresh() }
-            }
+            .refreshable { await model.refresh() }
         }
     }
 }
@@ -57,7 +43,7 @@ private struct ArticleRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(article.title).font(.headline).foregroundStyle(.primary)
+            Text(article.title).font(.headline)
             Text("\(article.newsSite) · \(article.publishedAt.prefix(10))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
