@@ -17,6 +17,11 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // Unreleased SDK changes: run `./gradlew :space-sdk:publishToMavenLocal` in
+        // the repo root, then build this app with -Pspacesdk.local.
+        if (providers.gradleProperty("spacesdk.local").isPresent) {
+            mavenLocal { content { includeGroup("io.github.bdiesel.spacesdk") } }
+        }
         google()
         mavenCentral()
         // SpaceSdk is published to GitHub Packages, which needs a token even for

@@ -31,6 +31,35 @@ sqldelight {
     }
 }
 
+// The SQLDelight plugin adds its runtime (and async-extensions) to commonMain's
+// *api*, with no opt-out. Swift export bridges api dependencies into the Swift
+// package, and the bridge it generates for SQLDelight doesn't compile (two
+// `Query(...)` overloads become one Swift declaration). They're implementation
+// details, declared as `implementation` in commonMain below; drop them from api.
+configurations.named("commonMainApi") {
+    withDependencies { removeIf { it.group == "app.cash.sqldelight" } }
+}
+
+// The SDK's SQLite driver needs the system libsqlite3, but the Package.swift that
+// Swift export writes doesn't link it (SQLDelight's linkSqlite only affects
+// Kotlin-built frameworks). Add it to the target that wraps the Kotlin binary, so
+// every app gets it from the package. Fails loudly if the file's layout changes.
+listOf("Debug", "Release").forEach { variant ->
+    val packageFile = layout.projectDirectory.file("SwiftPackage/$variant/Package.swift").asFile
+    tasks.matching { it.name == "export${variant}SwiftPackage" }.configureEach {
+        doLast {
+            val text = packageFile.readText()
+            val kotlinBinary = "dependencies: [\"SpaceSdkKotlin\"]"
+            check(kotlinBinary in text) { "$packageFile changed layout: can't add libsqlite3" }
+            if ("linkedLibrary(\"sqlite3\")" !in text) {
+                packageFile.writeText(
+                    text.replace(kotlinBinary, "$kotlinBinary,\n            linkerSettings: [.linkedLibrary(\"sqlite3\")]"),
+                )
+            }
+        }
+    }
+}
+
 // SQLDelight has no option to generate internal code, so its classes (SpaceDatabase,
 // the *Queries, the row types) would be public API: visible to Android apps and
 // exported to Swift. Right after generating, make each top-level declaration
