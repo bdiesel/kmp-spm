@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
 
+# The sample apps install SpaceSdk from GitHub Packages, which needs a token
+# even for reads; the workflow's own GITHUB_TOKEN is enough.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   android-web:
     name: Android + Web (Wasm)
@@ -41,5 +47,64 @@ jobs:
         # then Xcode links it through the local Swift Package.
         run: |
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+
+  # The sample apps build exactly like an outside app would: from the
+  # *published* SpaceSdk packages, with no access to the SDK source.
+
+  sample-android:
+    name: Sample app · Android (Maven package)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: samples/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GITHUB_ACTOR is set by Actions
+        run: ./gradlew :app:assembleDebug
+
+  sample-web:
+    name: Sample app · Web (npm package)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: samples/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: samples/web/package-lock.json
+      - name: Install (SpaceSdk from GitHub Packages)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # read by samples/web/.npmrc
+        run: npm ci
+      - name: Type-check and build
+        run: npm run build
+      - name: Upload the built site
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-sample
+          path: samples/web/dist
+
+  sample-ios:
+    name: Sample app · iOS (Swift package)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)" && xcodebuild -version
+      - name: Build (SpaceSdk-swift resolved from GitHub)
+        run: |
+          xcodebuild -project samples/ios/SdkSample.xcodeproj -scheme SdkSample \
             -configuration Debug -destination 'generic/platform=iOS Simulator' \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
