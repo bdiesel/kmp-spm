@@ -65,8 +65,16 @@ Xcode: **File ▸ Add Package Dependencies…** → \`https://github.com/$SWIFT_
 import SpaceSdk
 
 let sdk = SpaceSdk()
-let result = try await sdk.getPictureOfTheDay()
+
+// Live data: the stored picture, then every update.
+for try await picture in sdk.pictureOfTheDay.observeToday().asAsyncSequence() { … }
+
+// Commands fetch and report errors; observers receive the new data.
+let result = try await sdk.pictureOfTheDay.refresh()
 \`\`\`
+
+Widgets and other app extensions: create the SDK with the same App Group in
+the app and the extension so they share stored data and images.
 EOF
 
 echo

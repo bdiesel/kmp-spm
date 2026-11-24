@@ -104,7 +104,7 @@ class SqlLocalDataSourcesTest {
 
     @Test
     fun imageFilesAreWrittenServedAndDeleted() = runTest {
-        val directory = "${imageCacheDirectory()}/test-$name"
+        val directory = "${imageCacheDirectory(appGroup = null)}/test-$name"
         val files = FileImageFiles(directory)
 
         assertNull(files.localUrl("a.jpg"))
@@ -117,6 +117,28 @@ class SqlLocalDataSourcesTest {
         files.delete("a.jpg")
         assertNull(files.localUrl("a.jpg"))
         SystemFileSystem.delete(Path(directory))
+    }
+
+    @Test
+    fun twoConnectionsInASharedFolderSeeTheSameData() = runTest {
+        // Stands in for an app and its widget extension sharing an App Group folder.
+        val folder = "${imageCacheDirectory(appGroup = null)}/shared-$name"
+        val app = nativeSqlDriver(name, folder)
+        val widget = nativeSqlDriver(name, folder)
+
+        SqlApodLocalDataSource(lazyDatabase(app)).save(picture("2026-11-22"), isLatest = true)
+
+        assertEquals("2026-11-22", SqlApodLocalDataSource(lazyDatabase(widget)).latest()?.date)
+        assertEquals(true, SystemFileSystem.exists(Path(folder, name)))
+        app.close()
+        widget.close()
+    }
+
+    @Test
+    fun unknownAppGroupFallsBackToTheAppsOwnStorage() {
+        // The test runner isn't entitled to any App Group.
+        assertNull(appGroupContainer("group.com.example.not-entitled"))
+        assertEquals(imageCacheDirectory(appGroup = null), imageCacheDirectory("group.com.example.not-entitled"))
     }
 
     @Test

@@ -14,7 +14,8 @@ internal object AppContext {
 
 // A SQLite file in the app's databases directory. If the Context wasn't
 // captured (an app that disabled androidx.startup), the cache stays in memory.
-internal actual fun sqlDriverFactory(): (() -> SqlDriver)? =
+// No App Groups on Android: widgets run in the app's process and share this file.
+internal actual fun sqlDriverFactory(appGroup: String?): (() -> SqlDriver)? =
     AppContext.value?.let { context ->
         { AndroidSqliteDriver(SpaceDatabase.Schema.synchronous(), context, DATABASE_NAME) }
     }

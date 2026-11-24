@@ -7,9 +7,10 @@ internal const val DATABASE_NAME = "spacesdk.db"
 
 /**
  * Opens this platform's SQLite database, or null when the platform keeps the
- * cache in memory instead (currently the web).
+ * cache in memory instead (currently the web). [appGroup] (iOS only) puts it
+ * in that App Group's container, shared with app extensions such as widgets.
  */
-internal expect fun sqlDriverFactory(): (() -> SqlDriver)?
+internal expect fun sqlDriverFactory(appGroup: String?): (() -> SqlDriver)?
 
 /** Where the SDK keeps its offline cache. [images] is null when images aren't cached. */
 internal class LocalStorage(
@@ -18,11 +19,11 @@ internal class LocalStorage(
     val images: ImageCache?,
 ) {
     companion object {
-        fun create(maxCachedImages: Int): LocalStorage {
-            val openDriver = sqlDriverFactory() ?: return inMemory()
+        fun create(maxCachedImages: Int, appGroup: String? = null): LocalStorage {
+            val openDriver = sqlDriverFactory(appGroup) ?: return inMemory()
             // Opened lazily, on first use (a background dispatcher), not on the caller's thread.
             val database = lazy { SpaceDatabase(openDriver()) }
-            val images = imageCacheDirectory()?.let { directory ->
+            val images = imageCacheDirectory(appGroup)?.let { directory ->
                 ImageCache(
                     index = SqlImageIndex(database),
                     files = FileImageFiles(directory),

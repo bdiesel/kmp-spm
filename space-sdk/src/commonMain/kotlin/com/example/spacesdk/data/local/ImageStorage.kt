@@ -12,8 +12,11 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 
-/** The folder for downloaded images (the OS may clear it), or null for no image cache. */
-internal expect fun imageCacheDirectory(): String?
+/**
+ * The folder for downloaded images (the OS may clear it), or null for no image
+ * cache. [appGroup] (iOS only) puts it in that App Group's container.
+ */
+internal expect fun imageCacheDirectory(appGroup: String?): String?
 
 /** A `file://` URL for an absolute [path]. */
 internal expect fun fileUrl(path: String): String

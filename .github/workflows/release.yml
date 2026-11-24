@@ -1,0 +1,155 @@
+name: Release
+
+# Publishes SpaceSdk when a version tag is pushed:
+#
+#   1. bump spacesdk.version in gradle.properties and merge to main
+#   2. git tag v<version> && git push origin v<version>
+#
+# Android (Maven) and web (npm) go to this repo's GitHub Packages. The Swift
+# package goes to the separate repo bdiesel/SpaceSdk-swift (tag <version>, no
+# "v", with the compiled Kotlin as a release asset), which needs the
+# SWIFT_PACKAGE_REPO_TOKEN secret: a fine-grained token with Contents
+# read/write on that repo only.
+#
+# GitHub Packages won't overwrite a published version, so if one job fails,
+# re-run that job rather than re-tagging.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # the GitHub release in this repo
+  packages: write  # Maven and npm
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify version and tests
+    runs-on: macos-26
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches spacesdk.version
+        id: version
+        run: |
+          version="$(grep '^spacesdk.version=' gradle.properties | cut -d= -f2)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match spacesdk.version=$version in gradle.properties"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)" && xcodebuild -version
+      - name: SDK tests (iOS simulator, JS, JVM)
+        run: ./gradlew :space-api:allTests :space-sdk:allTests
+
+  maven:
+    name: Android · Maven (GitHub Packages)
+    needs: verify
+    # macOS: the Kotlin Multiplatform publication includes the iOS variants.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GITHUB_ACTOR is set by Actions
+        run: ./gradlew :space-sdk:publishAllPublicationsToGitHubPackagesRepository
+
+  npm:
+    name: Web · npm (GitHub Packages)
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the package
+        run: scripts/release-npm-package.sh "${{ needs.verify.outputs.version }}"
+      - name: Publish
+        working-directory: build/npm-release/${{ needs.verify.outputs.version }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # read by the package's .npmrc
+        run: npm publish
+
+  swift:
+    name: iOS · Swift package (SpaceSdk-swift)
+    needs: verify
+    runs-on: macos-26
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      SWIFT_REPO: bdiesel/SpaceSdk-swift
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)" && xcodebuild -version
+      - name: Build the package (Swift export, XCFramework zip, checksum)
+        run: scripts/release-swift-package.sh "$VERSION"
+      - name: Check out SpaceSdk-swift
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SWIFT_REPO }}
+          token: ${{ secrets.SWIFT_PACKAGE_REPO_TOKEN }}
+          path: swift-repo
+          fetch-depth: 0
+      - name: Commit and tag the package
+        working-directory: swift-repo
+        run: |
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::$SWIFT_REPO already has tag $VERSION"
+            exit 1
+          fi
+          rsync -a --delete --exclude .git "../build/swift-release/$VERSION/package/" ./
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "SpaceSdk $VERSION (from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7})"
+          git tag "$VERSION"
+          git push origin HEAD "$VERSION"
+      - name: Release with the XCFramework zip
+        # The zip's checksum is in the Package.swift just pushed; both came from the same build.
+        env:
+          GH_TOKEN: ${{ secrets.SWIFT_PACKAGE_REPO_TOKEN }}
+        run: |
+          gh release create "$VERSION" "build/swift-release/$VERSION/SpaceSdkKotlin.xcframework.zip" \
+            --repo "$SWIFT_REPO" --title "SpaceSdk $VERSION" \
+            --notes "Generated from https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"
+
+  github-release:
+    name: GitHub release
+    needs: [verify, maven, npm, swift]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "SpaceSdk ${{ needs.verify.outputs.version }}" --generate-notes

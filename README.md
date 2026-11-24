@@ -581,7 +581,25 @@ browsers and in Node 18+.
 
 ## Publishing a release
 
-The version lives in `gradle.properties` (`spacesdk.version`).
+The version lives in `gradle.properties` (`spacesdk.version`). To release, bump
+it on `main`, then push a matching tag:
+
+```sh
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+The [Release workflow](.github/workflows/release.yml) checks that the tag
+matches the version, runs the SDK tests, then publishes all three packages in
+parallel (Maven and npm to GitHub Packages, the Swift package to
+`SpaceSdk-swift` tagged `0.3.0` with the XCFramework zip attached) and creates
+a GitHub release. It needs one secret, `SWIFT_PACKAGE_REPO_TOKEN`: a
+fine-grained token with **Contents: read and write** on `SpaceSdk-swift` only.
+GitHub Packages won't overwrite a version, so if a job fails, re-run that job
+instead of re-tagging.
+
+### By hand
+
+The workflow runs these same steps; they're also useful for a local dry run.
 
 **iOS:**
 

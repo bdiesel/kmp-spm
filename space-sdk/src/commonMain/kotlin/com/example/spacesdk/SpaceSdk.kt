@@ -37,7 +37,22 @@ public class SpaceSdk internal constructor(
     public constructor() : this(DEFAULT_MAX_CACHED_IMAGES)
 
     /** Keeps the [maxCachedImages] most recently used images, plus today's picture. 0 caches none. */
-    public constructor(maxCachedImages: Int) : this(LocalStorage.create(maxCachedImages))
+    public constructor(maxCachedImages: Int) : this(maxCachedImages, appGroup = null)
+
+    /**
+     * Like `SpaceSdk(maxCachedImages)`, sharing storage with app extensions.
+     *
+     * iOS: [appGroup] is an App Group ID (`group.…`). The SDK keeps its offline
+     * data and images in that group's container, so an app and its widget
+     * extension share them. Use the same ID in the app and every extension, and
+     * add it to each target's App Groups entitlement. If the app isn't entitled
+     * to it, the SDK uses the app's own storage.
+     *
+     * Android and web: [appGroup] is ignored. Android widgets run in the app's
+     * process and already share its storage.
+     */
+    public constructor(maxCachedImages: Int, appGroup: String?) :
+        this(LocalStorage.create(maxCachedImages, appGroup))
 
     private constructor(storage: LocalStorage) : this(
         DefaultApodRepository(
@@ -61,4 +76,5 @@ public class SpaceSdk internal constructor(
 
     /** Cached images for pictures and articles. */
     public val images: ImageUseCases = ImageUseCases(imageCache)
+
 }
