@@ -326,8 +326,9 @@ apps. It wraps two public APIs, neither of which needs an API key:
 
 How apps get it:
 
-- **Android:** a regular Kotlin library (`implementation(project(":space-sdk"))`).
-  Apps call `suspend` functions and collect `Flow` directly.
+- **Android:** a regular Kotlin library from Maven
+  (`io.github.bdiesel.spacesdk:space-sdk`). Apps call `suspend` functions and
+  collect `Flow` directly.
 - **iOS:** a **prebuilt Swift package** produced by Kotlin's Swift export
   (Beta in Kotlin 2.5). Apps add it like any package and `import SpaceSdk`; no
   Gradle runs in the app's build. `suspend` → `async`, `Flow` →
@@ -335,7 +336,10 @@ How apps get it:
 - **Web:** an **npm package** compiled by Kotlin/JS (ES modules, with
   generated `.d.mts` TypeScript definitions). A small JS-only facade
   (`space-sdk/src/jsMain`) turns `suspend` functions into Promises and lists
-  into arrays; the use cases behind it are the same shared code.
+  into arrays; the use cases behind it are the same shared code. This is
+  Kotlin/JS, not Wasm: Kotlin/Wasm can only export primitive types to
+  JavaScript, so classes like `SpaceSdk` and the result types couldn't be
+  used from TypeScript. (Wasm is still used by the original Compose demo.)
 
 ### Public API: use cases
 
@@ -361,11 +365,18 @@ Screen state is deliberately **not** in the SDK: each app's view models own it.
 ```mermaid
 flowchart TB
     subgraph apps["Each app · view model + view"]
-        Swift["iOS · @Observable model + SwiftUI"]
         Compose["Android · ViewModel + Compose"]
+        Swift["iOS · @Observable model + SwiftUI"]
+        Web["Web · TypeScript view model + DOM"]
     end
 
-    subgraph public["SpaceSdk public API · use cases"]
+    subgraph packages["Published packages"]
+        Maven["Maven (Kotlin)<br/>suspend · Flow"]
+        SPM["Swift package (Swift export)<br/>async · AsyncSequence"]
+        Npm["npm (Kotlin/JS + .d.mts)<br/>Promise · Array"]
+    end
+
+    subgraph public["SpaceSdk public API · use cases (commonMain)"]
         SDK["SpaceSdk"]
         UC["pictureOfTheDay: today() · forDate()<br/>news: latest() · refresh()"]
         Models["PictureOfTheDay · NewsArticle · MediaType<br/>PictureResult · NewsResult · SpaceError"]
@@ -380,8 +391,9 @@ flowchart TB
         Gen["ApodApi · ArticlesApi<br/>OpenAPI Generator (Ktor)"]
     end
 
-    Swift --> UC
-    Compose --> UC
+    Compose --> Maven --> UC
+    Swift --> SPM --> UC
+    Web --> Npm -- "jsMain facade" --> UC
     SDK --> UC --> Repo --> Remote --> Gen
 ```
 
