@@ -137,6 +137,7 @@ kotlin {
                 // Offline cache. `implementation`: never part of the API.
                 implementation(libs.sqldelight.runtime)
                 implementation(libs.sqldelight.async.extensions)
+                implementation(libs.sqldelight.coroutines.extensions) // queries as Flows (live data)
                 implementation(libs.kotlinx.io.core) // image cache files (Android, iOS)
             }
         }

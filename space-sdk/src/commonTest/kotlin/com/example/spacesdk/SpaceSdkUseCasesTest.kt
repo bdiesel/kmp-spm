@@ -1,6 +1,11 @@
 package com.example.spacesdk
 
 import com.example.spacesdk.data.source.SpaceApiException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
@@ -8,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** The public API, exercised the way an app uses it: through SpaceSdk. */
+@OptIn(ExperimentalCoroutinesApi::class) // UnconfinedTestDispatcher
 class SpaceSdkUseCasesTest {
 
     private fun sdk(
@@ -70,6 +76,50 @@ class SpaceSdkUseCasesTest {
         val news = FakeNewsRepository(listOf(article(1), article(2), article(3)))
 
         assertEquals(NewsResult.Success(listOf(article(1), article(2))), sdk(news = news).news.latest(2))
+    }
+
+    @Test
+    fun pictureRefreshIsDeliveredThroughTheStream() = runTest {
+        val sdk = sdk(apod = FakeApodRepository(mapOf(null to picture("2026-11-22"))))
+        val seen = mutableListOf<PictureOfTheDay?>()
+        val observing = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            sdk.pictureOfTheDay.observeToday().toList(seen)
+        }
+
+        assertEquals(RefreshResult.Success, sdk.pictureOfTheDay.refresh())
+
+        assertEquals(listOf(null, picture("2026-11-22")), seen)
+        observing.cancel()
+    }
+
+    @Test
+    fun failedRefreshReportsTheErrorAndLeavesTheStreamAlone() = runTest {
+        val apod = FakeApodRepository().apply { failWith = SpaceApiException("HTTP 503") }
+        val news = FakeNewsRepository().apply { failWith = IllegalStateException("offline") }
+        val sdk = sdk(apod, news)
+
+        assertEquals(RefreshResult.Failure(SpaceError.SERVER), sdk.pictureOfTheDay.refresh())
+        assertEquals(RefreshResult.Failure(SpaceError.NETWORK), sdk.news.refresh(5))
+        assertEquals(null, sdk.pictureOfTheDay.observeToday().first())
+    }
+
+    @Test
+    fun refreshWithNoPictureIsNotFound() = runTest {
+        assertEquals(RefreshResult.Failure(SpaceError.NOT_FOUND), sdk().pictureOfTheDay.refresh())
+    }
+
+    @Test
+    fun newsRefreshIsDeliveredThroughTheStream() = runTest {
+        val sdk = sdk(news = FakeNewsRepository(listOf(article(1), article(2), article(3))))
+        val seen = mutableListOf<List<Int>>()
+        val observing = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            sdk.news.observeLatest(2).collect { seen += it.map(NewsArticle::id) }
+        }
+
+        assertEquals(RefreshResult.Success, sdk.news.refresh(2))
+
+        assertEquals(listOf(emptyList(), listOf(1, 2)), seen)
+        observing.cancel()
     }
 
     @Test

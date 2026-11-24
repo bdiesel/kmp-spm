@@ -5,6 +5,9 @@ import com.example.spacesdk.data.ImagePrefetcher
 import com.example.spacesdk.data.NewsRepository
 import com.example.spacesdk.data.source.ApodRemoteDataSource
 import com.example.spacesdk.data.source.NewsRemoteDataSource
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.LocalDate
 
 internal fun picture(date: String, title: String = "Picture $date") = PictureOfTheDay(
@@ -71,11 +74,20 @@ internal class FakeImagePrefetcher : ImagePrefetcher {
 internal class FakeApodRepository(private val pictures: Map<LocalDate?, PictureOfTheDay> = emptyMap()) : ApodRepository {
     var failWith: Exception? = null
     val requested = mutableListOf<LocalDate?>()
+    val stored = MutableStateFlow<PictureOfTheDay?>(null)
 
     override suspend fun getPicture(date: LocalDate?): PictureOfTheDay? {
         requested += date
         failWith?.let { throw it }
         return pictures[date]
+    }
+
+    override fun observeLatest(): Flow<PictureOfTheDay?> = stored
+
+    override suspend fun refreshLatest(): Boolean {
+        failWith?.let { throw it }
+        stored.value = pictures[null] ?: return false
+        return true
     }
 }
 
@@ -87,5 +99,15 @@ internal class FakeNewsRepository(private val articles: List<NewsArticle> = empt
         requestedLimits += limit
         failWith?.let { throw it }
         return articles.take(limit)
+    }
+
+    val stored = MutableStateFlow<List<NewsArticle>>(emptyList())
+
+    override fun observeLatest(limit: Int): Flow<List<NewsArticle>> = stored.map { it.take(limit) }
+
+    override suspend fun refresh(limit: Int) {
+        requestedLimits += limit
+        failWith?.let { throw it }
+        stored.value = articles.take(limit)
     }
 }

@@ -2,6 +2,12 @@ package com.example.spacesdk.data.local
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOneOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.example.spacesdk.MediaType
 import com.example.spacesdk.NewsArticle
 import com.example.spacesdk.PictureOfTheDay
@@ -34,6 +40,10 @@ internal class SqlApodLocalDataSource(
 
     override suspend fun latest(): PictureOfTheDay? = queries.latest(::toPicture).awaitAsOneOrNull()
 
+    // SQLDelight re-runs the query whenever a write to `picture` or `latest_picture` commits.
+    override fun observeLatest(): Flow<PictureOfTheDay?> =
+        queries.latest(::toPicture).asFlow().mapToOneOrNull(Dispatchers.Default).distinctUntilChanged()
+
     override suspend fun save(picture: PictureOfTheDay, isLatest: Boolean) {
         database.transaction {
             with(picture) {
@@ -54,6 +64,9 @@ internal class SqlNewsLocalDataSource(database: Lazy<SpaceDatabase>) : NewsLocal
         val fetchedAt = queries.fetchedAt().awaitAsOneOrNull() ?: return null
         return CachedNews(queries.latest(limit.toLong(), ::toArticle).awaitAsList(), fetchedAt)
     }
+
+    override fun observeLatest(limit: Int): Flow<List<NewsArticle>> =
+        queries.latest(limit.toLong(), ::toArticle).asFlow().mapToList(Dispatchers.Default).distinctUntilChanged()
 
     override suspend fun replace(articles: List<NewsArticle>, fetchedAtMillis: Long) {
         database.transaction {

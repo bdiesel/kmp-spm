@@ -3,10 +3,14 @@
 package com.example.spacesdk.web
 
 import com.example.spacesdk.NewsArticle
+import com.example.spacesdk.PictureOfTheDay
 import com.example.spacesdk.PictureResult
+import com.example.spacesdk.RefreshResult
 import com.example.spacesdk.SpaceError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.promise
 import kotlin.js.Promise
 import com.example.spacesdk.ImageUseCases as CoreImageUseCases
@@ -16,8 +20,9 @@ import com.example.spacesdk.PictureOfTheDayUseCases as CorePictureOfTheDayUseCas
 import com.example.spacesdk.SpaceSdk as CoreSpaceSdk
 
 // The JavaScript face of SpaceSdk: the same use cases, with Promises instead of
-// suspend functions and arrays instead of Kotlin lists. Everything else
-// (caching, validation, the generated client) is the shared Kotlin code.
+// suspend functions, callbacks instead of Flows, and arrays instead of Kotlin
+// lists. Everything else (caching, validation, the generated client) is the
+// shared Kotlin code.
 
 /**
  * SpaceSdk for the web.
@@ -61,6 +66,17 @@ public class PictureOfTheDayUseCases internal constructor(
     /** The most recent picture. */
     public fun today(): Promise<PictureResult> = scope.promise { useCases.today() }
 
+    /**
+     * Calls [onChange] with the stored most recent picture (null until one is
+     * loaded), then again whenever it changes. Never fetches: call [refresh].
+     * Returns a function that stops observing.
+     */
+    public fun observeToday(onChange: (PictureOfTheDay?) -> Unit): () -> Unit =
+        scope.observe(useCases.observeToday(), onChange)
+
+    /** Fetches the most recent picture; observers then receive it. */
+    public fun refresh(): Promise<RefreshResult> = scope.promise { useCases.refresh() }
+
     /** The picture published on the given date (month 1–12, 1995-06-16 or later). */
     public fun forDate(year: Int, month: Int, day: Int): Promise<PictureResult> =
         scope.promise { useCases.forDate(year, month, day) }
@@ -75,8 +91,22 @@ public class NewsUseCases internal constructor(
     /** The [count] most recent articles (1–50). Uses cached articles when available. */
     public fun latest(count: Int): Promise<NewsResult> = scope.promise { useCases.latest(count).toWeb() }
 
-    /** Like [latest], but always fetches fresh articles. */
-    public fun refresh(count: Int): Promise<NewsResult> = scope.promise { useCases.refresh(count).toWeb() }
+    /**
+     * Calls [onChange] with up to [count] stored articles (empty until some are
+     * loaded), then again whenever they change. Never fetches: call [refresh].
+     * Returns a function that stops observing.
+     */
+    public fun observeLatest(count: Int, onChange: (Array<NewsArticle>) -> Unit): () -> Unit =
+        scope.observe(useCases.observeLatest(count)) { onChange(it.toTypedArray()) }
+
+    /** Fetches the [count] most recent articles; observers then receive them. */
+    public fun refresh(count: Int): Promise<RefreshResult> = scope.promise { useCases.refresh(count) }
+}
+
+/** Collects [flow] into [onChange] until the returned function is called. */
+private fun <T> CoroutineScope.observe(flow: Flow<T>, onChange: (T) -> Unit): () -> Unit {
+    val job = launch { flow.collect { onChange(it) } }
+    return { job.cancel() }
 }
 
 /** Result of a news request, with a plain array of articles. */

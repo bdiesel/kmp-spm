@@ -71,6 +71,16 @@ public sealed class PictureResult {
 }
 
 /**
+ * Result of a refresh command. The new data itself arrives through the
+ * matching `observe…` stream.
+ */
+@JsExport
+public sealed class RefreshResult {
+    public data object Success : RefreshResult()
+    public data class Failure(val error: SpaceError) : RefreshResult()
+}
+
+/**
  * Result of a news request. (JavaScript gets its own `NewsResult` with a plain
  * array of articles; see the web package.)
  */

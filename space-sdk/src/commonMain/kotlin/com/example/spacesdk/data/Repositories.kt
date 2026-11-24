@@ -11,6 +11,7 @@ import com.example.spacesdk.data.source.NewsRemoteDataSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlin.time.Clock
@@ -22,11 +23,23 @@ import kotlin.time.ExperimentalTime
 internal interface ApodRepository {
     /** The picture for [date], or the most recent one when [date] is null. Null if none exists. */
     suspend fun getPicture(date: LocalDate?): PictureOfTheDay?
+
+    /** The stored latest picture, re-emitted when it changes. Never touches the network. */
+    fun observeLatest(): Flow<PictureOfTheDay?>
+
+    /** Fetches and stores the latest picture. False if there is none; throws if the fetch fails. */
+    suspend fun refreshLatest(): Boolean
 }
 
 /** Exposes spaceflight news to the rest of the SDK. */
 internal interface NewsRepository {
     suspend fun getLatest(limit: Int, forceRefresh: Boolean): List<NewsArticle>
+
+    /** The stored articles, re-emitted when they change. Never touches the network. */
+    fun observeLatest(limit: Int): Flow<List<NewsArticle>>
+
+    /** Fetches and stores the latest articles; throws if the fetch fails. */
+    suspend fun refresh(limit: Int)
 }
 
 /** Downloads images in the background so they're available offline. Never blocks or throws. */
@@ -65,16 +78,22 @@ internal class DefaultApodRepository(
             }
         } else {
             try {
-                remote.fetchLatest()?.also {
-                    local.save(it, isLatest = true)
-                    it.imageUrl?.let(images::pin)
-                }
+                fetchAndStoreLatest()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 local.latest() ?: throw e
             }
         }
+    }
+
+    override fun observeLatest(): Flow<PictureOfTheDay?> = local.observeLatest()
+
+    override suspend fun refreshLatest(): Boolean = withContext(dispatcher) { fetchAndStoreLatest() != null }
+
+    private suspend fun fetchAndStoreLatest(): PictureOfTheDay? = remote.fetchLatest()?.also {
+        local.save(it, isLatest = true)
+        it.imageUrl?.let(images::pin)
     }
 }
 
@@ -99,14 +118,22 @@ internal class DefaultNewsRepository(
             val isFresh = stored != null && nowMillis() - stored.fetchedAtMillis < maxAge.inWholeMilliseconds
             if (!forceRefresh && isFresh && stored.articles.size >= limit) return@withContext stored.articles
             try {
-                remote.fetchLatest(limit).also { fresh ->
-                    local.replace(fresh, nowMillis())
-                    images.prefetch(fresh.mapNotNull { it.imageUrl })
-                }
+                fetchAndStore(limit)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 stored?.articles?.takeIf { it.isNotEmpty() } ?: throw e
             }
         }
+
+    override fun observeLatest(limit: Int): Flow<List<NewsArticle>> = local.observeLatest(limit)
+
+    override suspend fun refresh(limit: Int) {
+        withContext(dispatcher) { fetchAndStore(limit) }
+    }
+
+    private suspend fun fetchAndStore(limit: Int): List<NewsArticle> = remote.fetchLatest(limit).also { fresh ->
+        local.replace(fresh, nowMillis())
+        images.prefetch(fresh.mapNotNull { it.imageUrl })
+    }
 }

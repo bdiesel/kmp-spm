@@ -7,6 +7,12 @@ import com.example.spacesdk.MediaType
 import com.example.spacesdk.article
 import com.example.spacesdk.data.local.db.SpaceDatabase
 import com.example.spacesdk.picture
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.io.files.Path
@@ -111,6 +117,33 @@ class SqlLocalDataSourcesTest {
         files.delete("a.jpg")
         assertNull(files.localUrl("a.jpg"))
         SystemFileSystem.delete(Path(directory))
+    }
+
+    @Test
+    fun writesAreDeliveredToObservers() = runTest {
+        val driver = openDriver()
+        val database = lazyDatabase(driver)
+        val pictures = SqlApodLocalDataSource(database)
+        val news = SqlNewsLocalDataSource(database)
+        val watching = CompletableDeferred<Unit>()
+        val newsWatching = CompletableDeferred<Unit>()
+
+        // Real threads: SQLDelight notifies the queries when a write commits.
+        val pictureUpdates = async(Dispatchers.Default) {
+            pictures.observeLatest().onEach { watching.complete(Unit) }.take(2).toList()
+        }
+        val newsUpdates = async(Dispatchers.Default) {
+            news.observeLatest(2).onEach { newsWatching.complete(Unit) }.take(2).toList()
+        }
+        watching.await()
+        newsWatching.await()
+
+        pictures.save(picture("2026-11-22"), isLatest = true)
+        news.replace(listOf(article(1), article(2), article(3)), fetchedAtMillis = 1)
+
+        assertEquals(listOf(null, "2026-11-22"), pictureUpdates.await().map { it?.date })
+        assertEquals(listOf(emptyList(), listOf(1, 2)), newsUpdates.await().map { list -> list.map { it.id } })
+        driver.close()
     }
 
     @Test

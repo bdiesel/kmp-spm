@@ -5,6 +5,7 @@ import com.example.spacesdk.FakeImagePrefetcher
 import com.example.spacesdk.FakeNewsRemote
 import com.example.spacesdk.article
 import com.example.spacesdk.picture
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -107,6 +108,25 @@ class RepositoriesTest {
         repository.getLatest(limit = 3, forceRefresh = false) // served from storage: nothing new to fetch
 
         assertEquals(listOf("https://x/1.jpg", "https://x/3.jpg"), images.prefetched)
+    }
+
+    @Test
+    fun refreshCommandsReportFailuresButKeepWhatIsStored() = runTest {
+        val news = FakeNewsRemote(listOf(article(1)))
+        val apod = FakeApodRemote(latest = picture("2026-11-22"))
+        val newsRepository = newsRepo(news)
+        val apodRepository = apodRepo(apod)
+        newsRepository.refresh(1)
+        apodRepository.refreshLatest()
+
+        news.failWith = IllegalStateException("offline")
+        apod.failWith = IllegalStateException("offline")
+
+        // Unlike getLatest/getPicture, commands don't fall back: the app needs the error.
+        assertFailsWith<IllegalStateException> { newsRepository.refresh(1) }
+        assertFailsWith<IllegalStateException> { apodRepository.refreshLatest() }
+        assertEquals(listOf(1), newsRepository.observeLatest(1).first().map { it.id })
+        assertEquals("2026-11-22", apodRepository.observeLatest().first()?.date)
     }
 
     @Test
