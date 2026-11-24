@@ -11,6 +11,8 @@ ktor = "3.6.1"
 openapi-generator = "7.27.0"
 sqldelight = "2.4.1"
 androidx-startup = "1.2.0"
+# Matches what Ktor uses; files for the image cache.
+kotlinx-io = "0.9.1"
 android-compileSdk = "37"
 # Minor SDK release (37.2). Compose 1.13 requires compileSdk 37.1+.
 android-compileSdkMinor = "2"
@@ -40,6 +42,7 @@ sqldelight-async-extensions = { module = "app.cash.sqldelight:async-extensions",
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidx-startup" }
+kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

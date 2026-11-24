@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.promise
 import kotlin.js.Promise
+import com.example.spacesdk.ImageUseCases as CoreImageUseCases
 import com.example.spacesdk.NewsResult as CoreNewsResult
 import com.example.spacesdk.NewsUseCases as CoreNewsUseCases
 import com.example.spacesdk.PictureOfTheDayUseCases as CorePictureOfTheDayUseCases
@@ -36,6 +37,19 @@ public class SpaceSdk {
 
     /** Spaceflight news. */
     public val news: NewsUseCases = NewsUseCases(core.news, scope)
+
+    /** Images for pictures and articles. */
+    public val images: ImageUseCases = ImageUseCases(core.images, scope)
+}
+
+/** Image use cases. Promises never reject. */
+@JsExport
+public class ImageUseCases internal constructor(
+    private val useCases: CoreImageUseCases,
+    private val scope: CoroutineScope,
+) {
+    /** A URL to show [imageUrl] with, e.g. in `<img src>`. On the web, currently [imageUrl] itself. */
+    public fun displayUrl(imageUrl: String): Promise<String> = scope.promise { useCases.displayUrl(imageUrl) }
 }
 
 /** Astronomy Picture of the Day use cases. Promises never reject; failures are a `PictureResult.Failure`. */

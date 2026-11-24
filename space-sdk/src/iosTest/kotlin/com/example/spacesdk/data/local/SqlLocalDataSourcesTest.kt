@@ -9,6 +9,8 @@ import com.example.spacesdk.data.local.db.SpaceDatabase
 import com.example.spacesdk.picture
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,6 +55,62 @@ class SqlLocalDataSourcesTest {
 
         assertEquals("2026-11-22", source.latest()?.date)
         driver.close()
+    }
+
+    @Test
+    fun onlyTheMostRecentlyViewedPicturesAreKept() = runTest {
+        val driver = openDriver()
+        var now = 0L
+        val source = SqlApodLocalDataSource(lazyDatabase(driver), maxPictures = 2, nowMillis = { now++ })
+
+        source.save(picture("2026-11-22"), isLatest = true)
+        source.save(picture("2020-01-01"), isLatest = false)
+        source.save(picture("2020-01-02"), isLatest = false)
+        source.pictureFor(LocalDate(2020, 1, 1)) // viewed again: now newer than 01-02
+        source.save(picture("2020-01-03"), isLatest = false)
+        source.save(picture("2020-01-04"), isLatest = false)
+
+        assertNull(source.pictureFor(LocalDate(2020, 1, 2)))
+        assertNull(source.pictureFor(LocalDate(2020, 1, 1)))
+        assertEquals("2020-01-03", source.pictureFor(LocalDate(2020, 1, 3))?.date)
+        assertEquals("2026-11-22", source.latest()?.date) // kept although it's the oldest
+        driver.close()
+    }
+
+    @Test
+    fun imageIndexSurvivesReopeningTheDatabase() = runTest {
+        val first = openDriver()
+        SqlImageIndex(lazyDatabase(first)).apply {
+            put(ImageEntry("https://x/a.jpg", "a.jpg", 100, 1))
+            put(ImageEntry("https://x/b.jpg", "b.jpg", 200, 2))
+            touch("https://x/a.jpg", nowMillis = 5)
+            remove("https://x/b.jpg")
+            setPinned("https://x/today.jpg")
+        }
+        first.close()
+
+        val second = openDriver()
+        val index = SqlImageIndex(lazyDatabase(second))
+        assertEquals(listOf(ImageEntry("https://x/a.jpg", "a.jpg", 100, 5)), index.all())
+        assertEquals("https://x/today.jpg", index.pinned())
+        second.close()
+    }
+
+    @Test
+    fun imageFilesAreWrittenServedAndDeleted() = runTest {
+        val directory = "${imageCacheDirectory()}/test-$name"
+        val files = FileImageFiles(directory)
+
+        assertNull(files.localUrl("a.jpg"))
+        files.write("a.jpg", ByteArray(3) { it.toByte() })
+        val url = files.localUrl("a.jpg")
+        assertEquals(true, url?.startsWith("file:///"))
+        assertEquals(true, url?.endsWith("/a.jpg"))
+        assertEquals(3L, SystemFileSystem.metadataOrNull(Path(directory, "a.jpg"))?.size)
+
+        files.delete("a.jpg")
+        assertNull(files.localUrl("a.jpg"))
+        SystemFileSystem.delete(Path(directory))
     }
 
     @Test

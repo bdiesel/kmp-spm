@@ -7,26 +7,40 @@ import com.example.spacesdk.NewsArticle
 import com.example.spacesdk.PictureOfTheDay
 import com.example.spacesdk.data.local.db.SpaceDatabase
 import kotlinx.datetime.LocalDate
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+
+/** How many pictures are kept: the most recently viewed ones, plus the latest. */
+internal const val MAX_STORED_PICTURES = 100L
 
 /**
  * Pictures stored in SQLite, so they survive app restarts. [database] is
  * opened on first use, which happens on the repositories' background dispatcher.
  */
-internal class SqlApodLocalDataSource(database: Lazy<SpaceDatabase>) : ApodLocalDataSource {
+@OptIn(ExperimentalTime::class)
+internal class SqlApodLocalDataSource(
+    database: Lazy<SpaceDatabase>,
+    private val maxPictures: Long = MAX_STORED_PICTURES,
+    private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+) : ApodLocalDataSource {
     private val database by database
     private val queries get() = database.pictureQueries
 
-    override suspend fun pictureFor(date: LocalDate): PictureOfTheDay? =
-        queries.byDate(date.toString(), ::toPicture).awaitAsOneOrNull()
+    override suspend fun pictureFor(date: LocalDate): PictureOfTheDay? {
+        val key = date.toString()
+        return queries.byDate(key, ::toPicture).awaitAsOneOrNull()
+            ?.also { queries.touch(now = nowMillis(), date = key) }
+    }
 
     override suspend fun latest(): PictureOfTheDay? = queries.latest(::toPicture).awaitAsOneOrNull()
 
     override suspend fun save(picture: PictureOfTheDay, isLatest: Boolean) {
         database.transaction {
             with(picture) {
-                queries.upsert(date, title, explanation, mediaType.name, imageUrl, pageUrl, credit, altText)
+                queries.upsert(date, title, explanation, mediaType.name, imageUrl, pageUrl, credit, altText, nowMillis())
             }
             if (isLatest) queries.setLatest(picture.date)
+            queries.trim(keep = maxPictures)
         }
     }
 }

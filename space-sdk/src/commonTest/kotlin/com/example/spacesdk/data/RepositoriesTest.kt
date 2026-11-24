@@ -1,6 +1,7 @@
 package com.example.spacesdk.data
 
 import com.example.spacesdk.FakeApodRemote
+import com.example.spacesdk.FakeImagePrefetcher
 import com.example.spacesdk.FakeNewsRemote
 import com.example.spacesdk.article
 import com.example.spacesdk.picture
@@ -16,12 +17,15 @@ import kotlin.time.Duration.Companion.minutes
 
 class RepositoriesTest {
 
+    private val images = FakeImagePrefetcher()
+
     private fun TestScope.apodRepo(remote: FakeApodRemote) =
-        DefaultApodRepository(remote, dispatcher = StandardTestDispatcher(testScheduler))
+        DefaultApodRepository(remote, images = images, dispatcher = StandardTestDispatcher(testScheduler))
 
     private fun TestScope.newsRepo(remote: FakeNewsRemote, nowMillis: () -> Long = { 0L }) =
         DefaultNewsRepository(
             remote,
+            images = images,
             dispatcher = StandardTestDispatcher(testScheduler),
             maxAge = 15.minutes,
             nowMillis = nowMillis,
@@ -79,6 +83,30 @@ class RepositoriesTest {
 
         repository.getLatest(limit = 2, forceRefresh = true)
         assertEquals(2, remote.calls)
+    }
+
+    @Test
+    fun latestPicturesImageIsPinnedAndDatedOnesArePrefetched() = runTest {
+        val date = LocalDate(2014, 9, 18)
+        val remote = FakeApodRemote(latest = picture("2026-11-22")).apply { byDate[date] = picture("2014-09-18") }
+        val repository = apodRepo(remote)
+
+        repository.getPicture(null)
+        repository.getPicture(date)
+
+        assertEquals(listOf("https://example.com/2026-11-22.jpg"), images.pinned)
+        assertEquals(listOf("https://example.com/2014-09-18.jpg"), images.prefetched)
+    }
+
+    @Test
+    fun fetchedArticlesImagesArePrefetched() = runTest {
+        val withImages = listOf(article(1).copy(imageUrl = "https://x/1.jpg"), article(2), article(3).copy(imageUrl = "https://x/3.jpg"))
+        val repository = newsRepo(FakeNewsRemote(withImages))
+
+        repository.getLatest(limit = 3, forceRefresh = false)
+        repository.getLatest(limit = 3, forceRefresh = false) // served from storage: nothing new to fetch
+
+        assertEquals(listOf("https://x/1.jpg", "https://x/3.jpg"), images.prefetched)
     }
 
     @Test

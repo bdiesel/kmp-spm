@@ -1,6 +1,7 @@
 package com.example.spacesdk
 
 import com.example.spacesdk.data.ApodRepository
+import com.example.spacesdk.data.ImagePrefetcher
 import com.example.spacesdk.data.NewsRepository
 import com.example.spacesdk.data.source.ApodRemoteDataSource
 import com.example.spacesdk.data.source.NewsRemoteDataSource
@@ -57,6 +58,14 @@ internal class FakeNewsRemote(var articles: List<NewsArticle> = emptyList()) : N
         failWith?.let { throw it }
         return articles.take(limit)
     }
+}
+
+internal class FakeImagePrefetcher : ImagePrefetcher {
+    val prefetched = mutableListOf<String>()
+    val pinned = mutableListOf<String>()
+
+    override fun prefetch(urls: List<String>) { prefetched += urls }
+    override fun pin(url: String) { pinned += url }
 }
 
 internal class FakeApodRepository(private val pictures: Map<LocalDate?, PictureOfTheDay> = emptyMap()) : ApodRepository {

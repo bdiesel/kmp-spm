@@ -1,5 +1,6 @@
 -- Astronomy Pictures of the Day, one row per date. A dated picture never
 -- changes, so once stored it's served from here without a network call.
+-- Only the most recently viewed ones are kept (see trim).
 CREATE TABLE picture (
     date TEXT NOT NULL PRIMARY KEY, -- YYYY-MM-DD
     title TEXT NOT NULL,
@@ -8,7 +9,8 @@ CREATE TABLE picture (
     image_url TEXT,
     page_url TEXT NOT NULL,
     credit TEXT NOT NULL,
-    alt_text TEXT NOT NULL
+    alt_text TEXT NOT NULL,
+    last_viewed INTEGER NOT NULL    -- epoch milliseconds
 );
 
 -- Which picture was the most recent one last time we asked (at most one row).
@@ -29,8 +31,17 @@ FROM picture
 JOIN latest_picture ON picture.date = latest_picture.date;
 
 upsert:
-INSERT OR REPLACE INTO picture(date, title, explanation, media_type, image_url, page_url, credit, alt_text)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO picture(date, title, explanation, media_type, image_url, page_url, credit, alt_text, last_viewed)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+touch:
+UPDATE picture SET last_viewed = :now WHERE date = :date;
 
 setLatest:
 INSERT OR REPLACE INTO latest_picture(id, date) VALUES (0, ?);
+
+-- Keeps the :keep most recently viewed pictures, plus the latest one.
+trim:
+DELETE FROM picture
+WHERE date NOT IN (SELECT date FROM latest_picture)
+  AND date NOT IN (SELECT date FROM picture ORDER BY last_viewed DESC LIMIT :keep);

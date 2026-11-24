@@ -1,0 +1,36 @@
+-- Downloaded images: which file holds each image URL, how big it is, and when
+-- it was last used, so the least recently used ones can be removed first.
+CREATE TABLE image (
+    url TEXT NOT NULL PRIMARY KEY,
+    file TEXT NOT NULL,            -- file name inside the SDK's image folder
+    size_bytes INTEGER NOT NULL,
+    last_used INTEGER NOT NULL     -- epoch milliseconds
+);
+
+-- The image that's never removed (today's picture; at most one row). It may
+-- not be downloaded yet.
+CREATE TABLE pinned_image (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    url TEXT NOT NULL
+);
+
+byUrl:
+SELECT url, file, size_bytes, last_used FROM image WHERE url = ?;
+
+all:
+SELECT url, file, size_bytes, last_used FROM image;
+
+upsert:
+INSERT OR REPLACE INTO image(url, file, size_bytes, last_used) VALUES (?, ?, ?, ?);
+
+touch:
+UPDATE image SET last_used = :now WHERE url = :url;
+
+remove:
+DELETE FROM image WHERE url = ?;
+
+pinned:
+SELECT url FROM pinned_image WHERE id = 0;
+
+setPinned:
+INSERT OR REPLACE INTO pinned_image(id, url) VALUES (0, ?);

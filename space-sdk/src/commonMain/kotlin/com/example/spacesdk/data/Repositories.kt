@@ -29,24 +29,46 @@ internal interface NewsRepository {
     suspend fun getLatest(limit: Int, forceRefresh: Boolean): List<NewsArticle>
 }
 
+/** Downloads images in the background so they're available offline. Never blocks or throws. */
+internal interface ImagePrefetcher {
+    fun prefetch(urls: List<String>)
+
+    /** Prefetches [url] and keeps it however full the cache gets (today's picture). */
+    fun pin(url: String)
+
+    /** For platforms or tests without an image cache. */
+    object None : ImagePrefetcher {
+        override fun prefetch(urls: List<String>) {}
+        override fun pin(url: String) {}
+    }
+}
+
 /**
  * Offline-first: local storage is the single source of truth and the network
  * refreshes it. A dated picture never changes, so it's fetched once. "Latest"
  * always asks the network but falls back to the last known picture when
- * offline. Main-safe: work runs on [dispatcher].
+ * offline. Each new picture's image is downloaded in the background; the
+ * latest one's is kept. Main-safe: work runs on [dispatcher].
  */
 internal class DefaultApodRepository(
     private val remote: ApodRemoteDataSource,
     private val local: ApodLocalDataSource = InMemoryApodLocalDataSource(),
+    private val images: ImagePrefetcher = ImagePrefetcher.None,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ApodRepository {
 
     override suspend fun getPicture(date: LocalDate?): PictureOfTheDay? = withContext(dispatcher) {
         if (date != null) {
-            local.pictureFor(date) ?: remote.fetchByDate(date)?.also { local.save(it, isLatest = false) }
+            local.pictureFor(date) ?: remote.fetchByDate(date)?.also {
+                local.save(it, isLatest = false)
+                it.imageUrl?.let { url -> images.prefetch(listOf(url)) }
+            }
         } else {
             try {
-                remote.fetchLatest()?.also { local.save(it, isLatest = true) }
+                remote.fetchLatest()?.also {
+                    local.save(it, isLatest = true)
+                    it.imageUrl?.let(images::pin)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -59,12 +81,13 @@ internal class DefaultApodRepository(
 /**
  * Offline-first news: serves the stored list while it's younger than [maxAge]
  * (unless asked to refresh), otherwise fetches; falls back to the stored list,
- * however old, when offline.
+ * however old, when offline. Fetched articles' images are downloaded in the background.
  */
 @OptIn(ExperimentalTime::class)
 internal class DefaultNewsRepository(
     private val remote: NewsRemoteDataSource,
     private val local: NewsLocalDataSource = InMemoryNewsLocalDataSource(),
+    private val images: ImagePrefetcher = ImagePrefetcher.None,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val maxAge: Duration = 15.minutes,
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
@@ -76,7 +99,10 @@ internal class DefaultNewsRepository(
             val isFresh = stored != null && nowMillis() - stored.fetchedAtMillis < maxAge.inWholeMilliseconds
             if (!forceRefresh && isFresh && stored.articles.size >= limit) return@withContext stored.articles
             try {
-                remote.fetchLatest(limit).also { local.replace(it, nowMillis()) }
+                remote.fetchLatest(limit).also { fresh ->
+                    local.replace(fresh, nowMillis())
+                    images.prefetch(fresh.mapNotNull { it.imageUrl })
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
