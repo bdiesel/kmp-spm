@@ -31,6 +31,21 @@ sqldelight {
     }
 }
 
+// SQLDelight has no option to generate internal code, so its classes (SpaceDatabase,
+// the *Queries, the row types) would be public API: visible to Android apps and
+// exported to Swift. Right after generating, make each top-level declaration
+// internal. Members stay `public` (effectively internal inside an internal type),
+// which keeps overrides of SQLDelight's own public interfaces valid.
+tasks.withType<app.cash.sqldelight.gradle.SqlDelightTask>().configureEach {
+    val generated = outputDirectory
+    doLast {
+        val topLevelPublic = Regex("^public ", RegexOption.MULTILINE)
+        generated.get().asFile.walk().filter { it.isFile && it.extension == "kt" }.forEach { file ->
+            file.writeText(file.readText().replace(topLevelPublic, "internal "))
+        }
+    }
+}
+
 // The OpenAPI-generated clients from :space-api are compiled INTO this module,
 // so SpaceSdk publishes as one artifact. They are generated as `internal`.
 val openApiSources = configurations.create("openApiSources") {
