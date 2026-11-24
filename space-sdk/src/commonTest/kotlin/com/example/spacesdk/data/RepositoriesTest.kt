@@ -11,14 +11,21 @@ import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
 
 class RepositoriesTest {
 
     private fun TestScope.apodRepo(remote: FakeApodRemote) =
-        DefaultApodRepository(remote, StandardTestDispatcher(testScheduler))
+        DefaultApodRepository(remote, dispatcher = StandardTestDispatcher(testScheduler))
 
-    private fun TestScope.newsRepo(remote: FakeNewsRemote) =
-        DefaultNewsRepository(remote, StandardTestDispatcher(testScheduler))
+    private fun TestScope.newsRepo(remote: FakeNewsRemote, nowMillis: () -> Long = { 0L }) =
+        DefaultNewsRepository(
+            remote,
+            dispatcher = StandardTestDispatcher(testScheduler),
+            maxAge = 15.minutes,
+            nowMillis = nowMillis,
+        )
 
     @Test
     fun datedPictureIsFetchedOnceThenCached() = runTest {
@@ -72,6 +79,35 @@ class RepositoriesTest {
 
         repository.getLatest(limit = 2, forceRefresh = true)
         assertEquals(2, remote.calls)
+    }
+
+    @Test
+    fun staleNewsIsRefetched() = runTest {
+        var now = 0L
+        val remote = FakeNewsRemote(listOf(article(1)))
+        val repository = newsRepo(remote) { now }
+        repository.getLatest(limit = 1, forceRefresh = false)
+
+        now += 14.minutes.inWholeMilliseconds
+        repository.getLatest(limit = 1, forceRefresh = false)
+        assertEquals(1, remote.calls) // still fresh
+
+        now += 2.minutes.inWholeMilliseconds
+        repository.getLatest(limit = 1, forceRefresh = false)
+        assertEquals(2, remote.calls) // older than 15 minutes
+    }
+
+    @Test
+    fun staleNewsIsStillServedWhenOffline() = runTest {
+        var now = 0L
+        val remote = FakeNewsRemote(listOf(article(1)))
+        val repository = newsRepo(remote) { now }
+        repository.getLatest(limit = 1, forceRefresh = false)
+
+        now += 3.days.inWholeMilliseconds
+        remote.failWith = IllegalStateException("offline")
+
+        assertEquals(listOf(1), repository.getLatest(limit = 1, forceRefresh = false).map { it.id })
     }
 
     @Test

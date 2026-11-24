@@ -16,7 +16,19 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization) // the generated models are @Serializable
+    alias(libs.plugins.sqldelight)           // the offline cache (src/commonMain/sqldelight)
     `maven-publish`
+}
+
+// The cache database. Queries are generated as suspend-friendly (async) code so
+// that a web driver, which can only run asynchronously, can share them later.
+sqldelight {
+    databases {
+        create("SpaceDatabase") {
+            packageName.set("com.example.spacesdk.data.local.db")
+            generateAsync.set(true)
+        }
+    }
 }
 
 // The OpenAPI-generated clients from :space-api are compiled INTO this module,
@@ -122,15 +134,22 @@ kotlin {
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.kotlinx.json)
                 implementation(libs.kotlinx.serialization.json)
+                // Offline cache. `implementation`: never part of the API.
+                implementation(libs.sqldelight.runtime)
+                implementation(libs.sqldelight.async.extensions)
             }
         }
         androidMain.dependencies {
             // Android apps see Flow in our public API, so they need coroutines on their classpath.
             api(libs.kotlinx.coroutines.core)
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.sqldelight.android.driver)
+            // Captures the application Context at startup, so SpaceSdk() needs no arguments.
+            implementation(libs.androidx.startup)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+            implementation(libs.sqldelight.native.driver)
         }
         jsMain.dependencies {
             implementation(libs.ktor.client.js) // fetch() in the browser

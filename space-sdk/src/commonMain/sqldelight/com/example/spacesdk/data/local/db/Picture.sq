@@ -1,0 +1,36 @@
+-- Astronomy Pictures of the Day, one row per date. A dated picture never
+-- changes, so once stored it's served from here without a network call.
+CREATE TABLE picture (
+    date TEXT NOT NULL PRIMARY KEY, -- YYYY-MM-DD
+    title TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    media_type TEXT NOT NULL,       -- MediaType name
+    image_url TEXT,
+    page_url TEXT NOT NULL,
+    credit TEXT NOT NULL,
+    alt_text TEXT NOT NULL
+);
+
+-- Which picture was the most recent one last time we asked (at most one row).
+-- Served when "today" is requested while offline.
+CREATE TABLE latest_picture (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    date TEXT NOT NULL
+);
+
+byDate:
+SELECT date, title, explanation, media_type, image_url, page_url, credit, alt_text
+FROM picture
+WHERE date = ?;
+
+latest:
+SELECT picture.date, title, explanation, media_type, image_url, page_url, credit, alt_text
+FROM picture
+JOIN latest_picture ON picture.date = latest_picture.date;
+
+upsert:
+INSERT OR REPLACE INTO picture(date, title, explanation, media_type, image_url, page_url, credit, alt_text)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+setLatest:
+INSERT OR REPLACE INTO latest_picture(id, date) VALUES (0, ?);

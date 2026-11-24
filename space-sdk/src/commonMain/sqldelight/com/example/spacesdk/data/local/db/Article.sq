@@ -1,0 +1,37 @@
+-- The most recently fetched news list, in the order the API returned it.
+CREATE TABLE article (
+    position INTEGER NOT NULL PRIMARY KEY,
+    id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    url TEXT NOT NULL,
+    image_url TEXT,
+    news_site TEXT NOT NULL,
+    published_at TEXT NOT NULL
+);
+
+-- When that list was fetched (epoch milliseconds; at most one row), so stale
+-- news is refreshed instead of being served forever.
+CREATE TABLE news_fetch (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    fetched_at INTEGER NOT NULL
+);
+
+latest:
+SELECT id, title, summary, url, image_url, news_site, published_at
+FROM article
+ORDER BY position
+LIMIT :limit;
+
+fetchedAt:
+SELECT fetched_at FROM news_fetch WHERE id = 0;
+
+clear:
+DELETE FROM article;
+
+insert:
+INSERT INTO article(position, id, title, summary, url, image_url, news_site, published_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+setFetchedAt:
+INSERT OR REPLACE INTO news_fetch(id, fetched_at) VALUES (0, ?);
